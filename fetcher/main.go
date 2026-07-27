@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"regexp"
 	"strings"
@@ -110,6 +111,53 @@ func cleanHTMLText(htmlStr string) string {
 	return strings.TrimSpace(text)
 }
 
+func createHTTPClient() (*http.Client, error) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{
+		Timeout: 15 * time.Second,
+		Jar:     jar,
+	}, nil
+}
+
+func sendHTTPRequest(client *http.Client, urlStr string, hostHeader string) (string, error) {
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Browser-like headers
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7")
+	req.Header.Set("Referer", "https://translate.google.com/")
+	req.Header.Set("Connection", "keep-alive")
+
+	if hostHeader != "" {
+		req.Host = hostHeader
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		snippet := string(body)
+		if len(snippet) > 200 {
+			snippet = snippet[:200] + "..."
+		}
+		return "", fmt.Errorf("status code %d: %s", resp.StatusCode, snippet)
+	}
+
 func sendHTTPRequest(urlStr string, hostHeader string) (string, error) {
 	client := &http.Client{
 		Timeout: 15 * time.Second,
@@ -139,6 +187,101 @@ func sendHTTPRequest(urlStr string, hostHeader string) (string, error) {
 }
 
 func fetchHTML(channel string) (string, error) {
+	client, err := createHTTPClient()
+	if err != nil {
+		return "", fmt.Errorf("failed to create cookie-enabled HTTP client: %w", err)
+	}
+
+	var errors []string
+
+	// Stage 1: TeleMirror
+	mirrors := []string{
+		"https://telegram.dog/s/" + channel,
+		"https://tgme.org/s/" + channel,
+		"https://tme.ink/s/" + channel,
+	}
+	var teleMirrorHTML string
+	var teleMirrorErr error
+	for _, mirrorURL := range mirrors {
+		fmt.Fprintf(os.Stderr, "[Failover] Stage 1: Trying TeleMirror (url=%s)...\n", mirrorURL)
+		teleMirrorHTML, teleMirrorErr = sendHTTPRequest(client, mirrorURL, "")
+		if teleMirrorErr == nil && len(teleMirrorHTML) > 0 {
+			if strings.Contains(teleMirrorHTML, "tgme_widget_message") || strings.Contains(teleMirrorHTML, "data-post=") {
+				fmt.Fprintf(os.Stderr, "[Failover] Stage 1: TeleMirror succeeded using %s\n", mirrorURL)
+				return teleMirrorHTML, nil
+			}
+		}
+	}
+	if teleMirrorErr == nil && len(teleMirrorHTML) > 0 {
+		teleMirrorErr = fmt.Errorf("response received but does not contain posts")
+	} else if teleMirrorErr == nil {
+		teleMirrorErr = fmt.Errorf("no response returned")
+	}
+	errMsg := fmt.Sprintf("Stage 1 (TeleMirror) failed: %v", teleMirrorErr)
+	fmt.Fprintf(os.Stderr, "[Failover] %s\n", errMsg)
+	errors = append(errors, errMsg)
+
+	// Stage 2: Google Fronting
+	googleDomains := []string{
+		"www.google.com",
+		"news.google.com",
+		"safebrowsing.google.com",
+		"images.google.com",
+		"maps.google.com",
+	}
+	frontDomain := googleDomains[time.Now().UnixNano()%int64(len(googleDomains))]
+	googleFrontURL := fmt.Sprintf("https://%s/s/%s?_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en&_x_tr_pto=wapp", frontDomain, channel)
+	fmt.Fprintf(os.Stderr, "[Failover] Stage 2: Google Fronting (url=%s, SNI=%s, Host=t-me.translate.goog)...\n", googleFrontURL, frontDomain)
+
+	html, err := sendHTTPRequest(client, googleFrontURL, "t-me.translate.goog")
+	if err == nil && len(html) > 0 {
+		if strings.Contains(html, "tgme_widget_message") || strings.Contains(html, "data-post=") {
+			fmt.Fprintf(os.Stderr, "[Failover] Stage 2: Google Fronting succeeded.\n")
+			return html, nil
+		}
+		err = fmt.Errorf("response received but does not contain posts")
+	}
+	if err != nil {
+		errMsg := fmt.Sprintf("Stage 2 (Google Fronting) failed: %v", err)
+		fmt.Fprintf(os.Stderr, "[Failover] %s\n", errMsg)
+		errors = append(errors, errMsg)
+	}
+
+	// Stage 3: GoogleTranslate Direct
+	translateURL := "https://t-me.translate.goog/s/" + channel + "?_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en&_x_tr_pto=wapp"
+	fmt.Fprintf(os.Stderr, "[Failover] Stage 3: GoogleTranslate Direct (url=%s)...\n", translateURL)
+	html, err = sendHTTPRequest(client, translateURL, "t-me.translate.goog")
+	if err == nil && len(html) > 0 {
+		if strings.Contains(html, "tgme_widget_message") || strings.Contains(html, "data-post=") {
+			fmt.Fprintf(os.Stderr, "[Failover] Stage 3: GoogleTranslate Direct succeeded.\n")
+			return html, nil
+		}
+		err = fmt.Errorf("response received but does not contain posts")
+	}
+	if err != nil {
+		errMsg := fmt.Sprintf("Stage 3 (GoogleTranslate Direct) failed: %v", err)
+		fmt.Fprintf(os.Stderr, "[Failover] %s\n", errMsg)
+		errors = append(errors, errMsg)
+	}
+
+	// Stage 4: Direct
+	directURL := "https://t.me/s/" + channel
+	fmt.Fprintf(os.Stderr, "[Failover] Stage 4: Direct (url=%s)...\n", directURL)
+	html, err = sendHTTPRequest(client, directURL, "")
+	if err == nil && len(html) > 0 {
+		if strings.Contains(html, "tgme_widget_message") || strings.Contains(html, "data-post=") {
+			fmt.Fprintf(os.Stderr, "[Failover] Stage 4: Direct succeeded.\n")
+			return html, nil
+		}
+		err = fmt.Errorf("response received but does not contain posts")
+	}
+	if err != nil {
+		errMsg := fmt.Sprintf("Stage 4 (Direct) failed: %v", err)
+		fmt.Fprintf(os.Stderr, "[Failover] %s\n", errMsg)
+		errors = append(errors, errMsg)
+	}
+
+	return "", fmt.Errorf("all failover stages failed:\n- %s", strings.Join(errors, "\n- "))
 	// Failover chain: TeleMirror -> Google -> GoogleTranslate -> Direct
 
 	// 1. TeleMirror
@@ -226,7 +369,7 @@ func main() {
 
 	subcommand := os.Args[1]
 	if subcommand != "fetch" {
-		fmt.Printf("Unknown subcommand: %s\n", subcommand)
+		fmt.۴ح("Unknown subcommand: %s\n", subcommand)
 		os.Exit(1)
 	}
 
@@ -253,11 +396,23 @@ func main() {
 
 	html, err := fetchHTML(channel)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error fetching channel %s:\n%v\n", channel, err)
 		fmt.Fprintf(os.Stderr, "Error fetching channel %s: %v\n", channel, err)
 		os.Exit(1)
 	}
 
 	posts := parseHTMLToPosts(html)
+
+	if len(posts) == 0 {
+		filePath := "/tmp/debug_response.html"
+		_ = os.WriteFile(filePath, []byte(html), 0644)
+
+		snippet := html
+		if len(snippet) > 800 {
+			snippet = snippet[:800] + "..."
+		}
+		fmt.Fprintf(os.Stderr, "\n[Debug] WARNING: Parsed 0 posts from fetched HTML!\nRaw HTML response saved to %s\nFirst 800 chars:\n%s\n\n", filePath, snippet)
+	}
 
 	for i, j := 0, len(posts)-1; i < j; i, j = i+1, j-1 {
 		posts[i], posts[j] = posts[j], posts[i]
@@ -272,6 +427,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
 		os.Exit(1)
 	}
-
 	fmt.Println(string(jsonData))
 }
