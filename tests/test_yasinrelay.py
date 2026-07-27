@@ -271,13 +271,11 @@ def test_cli_run_loop(mock_sleep, mock_build_pipeline):
     mock_pipeline = Mock()
     mock_pipeline.run.return_value = []
     mock_build_pipeline.return_value = mock_pipeline
-
     # Mock sleep to raise KeyboardInterrupt to break the infinite loop
     mock_sleep.side_effect = KeyboardInterrupt()
 
     # Run cli run with --loop and a dummy channel
     exit_code = main(["run", "--channel", "@my_chan", "--loop"])
-
     assert exit_code == 0
     assert mock_pipeline.run.called
     assert mock_sleep.called
