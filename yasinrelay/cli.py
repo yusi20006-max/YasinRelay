@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from typing import List, Optional
 
 from .ai_processor import ContentProcessor, PassthroughProcessor
@@ -30,7 +31,11 @@ def build_pipeline(
 ) -> Pipeline:
     config = load_config()
     fetch_engine = fetch_engine or SubprocessFetcher()
-    processor = processor or PassthroughProcessor()
+    processor = processor or PassthroughProcessor(
+        api_key=config.ai_api_key,
+        base_url=config.ai_base_url,
+        model=config.ai_model,
+    )
     publisher = EitaaPublisher(config.eitaa, config.inter_message_delay_seconds)
     return Pipeline(fetch_engine, processor, publisher)
 
@@ -48,6 +53,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     run_parser = subparsers.add_parser("run", help="اجرای pipeline برای کانال‌های تنظیم‌شده")
     run_parser.add_argument("--channel", action="append", dest="channels", help="یک کانال خاص (قابل تکرار)")
     run_parser.add_argument("--limit", type=int, default=10, help="حداکثر تعداد پست هر کانال")
+    run_parser.add_argument("--loop", action="store_true", help="اجرای مداوم و دوره‌ای پایپ‌لاین بر اساس زمان‌بندی")
 
     args = parser.parse_args(argv)
 
@@ -59,10 +65,25 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 1
 
         pipeline = build_pipeline()
-        reports = pipeline.run(channels, limit=args.limit)
-        for report in reports:
-            _print_report(report)
-        return 0
+
+        if args.loop:
+            print(f"شروع اجرای دوره‌ای پایپ‌لاین. بازه زمانی: {config.fetch_interval_seconds} ثانیه")
+            try:
+                while True:
+                    print(f"\n--- شروع اجرای جدید در {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+                    reports = pipeline.run(channels, limit=args.limit)
+                    for report in reports:
+                        _print_report(report)
+                    print(f"پایان اجرا. خوابیدن به مدت {config.fetch_interval_seconds} ثانیه...")
+                    time.sleep(config.fetch_interval_seconds)
+            except KeyboardInterrupt:
+                print("\nاجرای دوره‌ای با دستور کاربر متوقف شد.")
+                return 0
+        else:
+            reports = pipeline.run(channels, limit=args.limit)
+            for report in reports:
+                _print_report(report)
+            return 0
 
     return 1
 

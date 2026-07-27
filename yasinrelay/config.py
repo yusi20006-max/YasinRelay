@@ -33,6 +33,9 @@ class RelayConfig:
     source_channels: List[str]
     fetch_interval_seconds: int = 3600
     inter_message_delay_seconds: int = 15
+    ai_api_key: str = ""
+    ai_base_url: str = "https://api.openai.com/v1"
+    ai_model: str = "gpt-4o-mini"
 
 
 def load_config() -> RelayConfig:
@@ -46,4 +49,7 @@ def load_config() -> RelayConfig:
         source_channels=sources,
         fetch_interval_seconds=int(os.environ.get("FETCH_INTERVAL_SECONDS", "3600")),
         inter_message_delay_seconds=int(os.environ.get("INTER_MESSAGE_DELAY_SECONDS", "15")),
+        ai_api_key=os.environ.get("AI_API_KEY", os.environ.get("OPENAI_API_KEY", "")),
+        ai_base_url=os.environ.get("AI_BASE_URL", "https://api.openai.com/v1"),
+        ai_model=os.environ.get("AI_MODEL", "gpt-4o-mini"),
     )
