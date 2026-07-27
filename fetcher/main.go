@@ -158,6 +158,31 @@ func sendHTTPRequest(client *http.Client, urlStr string, hostHeader string) (str
 		return "", fmt.Errorf("status code %d: %s", resp.StatusCode, snippet)
 	}
 
+func sendHTTPRequest(urlStr string, hostHeader string) (string, error) {
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+	}
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	if hostHeader != "" {
+		req.Host = hostHeader
+		req.Header.Set("Host", hostHeader)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("status code %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
 	return string(body), nil
 }
 
@@ -257,6 +282,33 @@ func fetchHTML(channel string) (string, error) {
 	}
 
 	return "", fmt.Errorf("all failover stages failed:\n- %s", strings.Join(errors, "\n- "))
+	// Failover chain: TeleMirror -> Google -> GoogleTranslate -> Direct
+
+	// 1. TeleMirror
+	html, err := sendHTTPRequest("https://tme.ink/s/"+channel, "")
+	if err == nil && len(html) > 0 {
+		return html, nil
+	}
+
+	// 2. Google (Domain Fronting)
+	html, err = sendHTTPRequest("https://www.google.com/s/"+channel+"?_x_tr_sl=el&_x_tr_tl=en&_x_tr_hl=en&_x_tr_pto=wapp", "t-me.translate.goog")
+	if err == nil && len(html) > 0 {
+		return html, nil
+	}
+
+	// 3. GoogleTranslate (Direct to t-me.translate.goog)
+	html, err = sendHTTPRequest("https://t-me.translate.goog/s/"+channel+"?_x_tr_sl=el&_x_tr_tl=en&_x_tr_hl=en&_x_tr_pto=wapp", "t-me.translate.goog")
+	if err == nil && len(html) > 0 {
+		return html, nil
+	}
+
+	// 4. Direct
+	html, err = sendHTTPRequest("https://t.me/s/"+channel, "")
+	if err == nil && len(html) > 0 {
+		return html, nil
+	}
+
+	return "", fmt.Errorf("failed to fetch channel content from all failover sources")
 }
 
 func parseHTMLToPosts(html string) []Post {
@@ -317,7 +369,7 @@ func main() {
 
 	subcommand := os.Args[1]
 	if subcommand != "fetch" {
-		fmt.Printf("Unknown subcommand: %s\n", subcommand)
+		fmt.۴ح("Unknown subcommand: %s\n", subcommand)
 		os.Exit(1)
 	}
 
@@ -345,6 +397,7 @@ func main() {
 	html, err := fetchHTML(channel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching channel %s:\n%v\n", channel, err)
+		fmt.Fprintf(os.Stderr, "Error fetching channel %s: %v\n", channel, err)
 		os.Exit(1)
 	}
 
@@ -374,6 +427,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
 		os.Exit(1)
 	}
-
 	fmt.Println(string(jsonData))
 }
