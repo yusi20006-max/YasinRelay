@@ -170,21 +170,31 @@ func fetchHTML(channel string) (string, error) {
 	var errors []string
 
 	// Stage 1: TeleMirror
-	teleMirrorURL := "https://tme.ink/s/" + channel
-	fmt.Fprintf(os.Stderr, "[Failover] Stage 1: TeleMirror (url=%s)...\n", teleMirrorURL)
-	html, err := sendHTTPRequest(client, teleMirrorURL, "")
-	if err == nil && len(html) > 0 {
-		if strings.Contains(html, "tgme_widget_message") || strings.Contains(html, "data-post=") {
-			fmt.Fprintf(os.Stderr, "[Failover] Stage 1: TeleMirror succeeded.\n")
-			return html, nil
+	mirrors := []string{
+		"https://telegram.dog/s/" + channel,
+		"https://tgme.org/s/" + channel,
+		"https://tme.ink/s/" + channel,
+	}
+	var teleMirrorHTML string
+	var teleMirrorErr error
+	for _, mirrorURL := range mirrors {
+		fmt.Fprintf(os.Stderr, "[Failover] Stage 1: Trying TeleMirror (url=%s)...\n", mirrorURL)
+		teleMirrorHTML, teleMirrorErr = sendHTTPRequest(client, mirrorURL, "")
+		if teleMirrorErr == nil && len(teleMirrorHTML) > 0 {
+			if strings.Contains(teleMirrorHTML, "tgme_widget_message") || strings.Contains(teleMirrorHTML, "data-post=") {
+				fmt.Fprintf(os.Stderr, "[Failover] Stage 1: TeleMirror succeeded using %s\n", mirrorURL)
+				return teleMirrorHTML, nil
+			}
 		}
-		err = fmt.Errorf("response received but does not contain posts")
 	}
-	if err != nil {
-		errMsg := fmt.Sprintf("Stage 1 (TeleMirror) failed: %v", err)
-		fmt.Fprintf(os.Stderr, "[Failover] %s\n", errMsg)
-		errors = append(errors, errMsg)
+	if teleMirrorErr == nil && len(teleMirrorHTML) > 0 {
+		teleMirrorErr = fmt.Errorf("response received but does not contain posts")
+	} else if teleMirrorErr == nil {
+		teleMirrorErr = fmt.Errorf("no response returned")
 	}
+	errMsg := fmt.Sprintf("Stage 1 (TeleMirror) failed: %v", teleMirrorErr)
+	fmt.Fprintf(os.Stderr, "[Failover] %s\n", errMsg)
+	errors = append(errors, errMsg)
 
 	// Stage 2: Google Fronting
 	googleDomains := []string{
@@ -198,7 +208,7 @@ func fetchHTML(channel string) (string, error) {
 	googleFrontURL := fmt.Sprintf("https://%s/s/%s?_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en&_x_tr_pto=wapp", frontDomain, channel)
 	fmt.Fprintf(os.Stderr, "[Failover] Stage 2: Google Fronting (url=%s, SNI=%s, Host=t-me.translate.goog)...\n", googleFrontURL, frontDomain)
 
-	html, err = sendHTTPRequest(client, googleFrontURL, "t-me.translate.goog")
+	html, err := sendHTTPRequest(client, googleFrontURL, "t-me.translate.goog")
 	if err == nil && len(html) > 0 {
 		if strings.Contains(html, "tgme_widget_message") || strings.Contains(html, "data-post=") {
 			fmt.Fprintf(os.Stderr, "[Failover] Stage 2: Google Fronting succeeded.\n")
@@ -339,6 +349,17 @@ func main() {
 	}
 
 	posts := parseHTMLToPosts(html)
+
+	if len(posts) == 0 {
+		filePath := "/tmp/debug_response.html"
+		_ = os.WriteFile(filePath, []byte(html), 0644)
+
+		snippet := html
+		if len(snippet) > 800 {
+			snippet = snippet[:800] + "..."
+		}
+		fmt.Fprintf(os.Stderr, "\n[Debug] WARNING: Parsed 0 posts from fetched HTML!\nRaw HTML response saved to %s\nFirst 800 chars:\n%s\n\n", filePath, snippet)
+	}
 
 	for i, j := 0, len(posts)-1; i < j; i, j = i+1, j-1 {
 		posts[i], posts[j] = posts[j], posts[i]
