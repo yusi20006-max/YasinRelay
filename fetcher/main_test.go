@@ -3,7 +3,21 @@ package main
 import (
 	"reflect"
 	"testing"
+
+	"fetcher/telemirror"
 )
+
+func parseHTMLToPosts(html string) []Post {
+	_, parsedPosts, err := telemirror.ParseHTML(html)
+	if err != nil {
+		return nil
+	}
+	var posts []Post
+	for _, p := range parsedPosts {
+		posts = append(posts, mapPost(p))
+	}
+	return posts
+}
 
 func TestFrontURL(t *testing.T) {
 	tests := []struct {
