@@ -23,11 +23,13 @@ from .config import load_config
 from .eitaa_publisher import EitaaPublisher
 from .fetch_engine import FetchEngine, SubprocessFetcher
 from .pipeline import ChannelRunReport, Pipeline
+from .storage.database import Database
 
 
 def build_pipeline(
     fetch_engine: Optional[FetchEngine] = None,
     processor: Optional[ContentProcessor] = None,
+    database: Optional[Database] = None,
 ) -> Pipeline:
     config = load_config()
     fetch_engine = fetch_engine or SubprocessFetcher()
@@ -37,7 +39,12 @@ def build_pipeline(
         model=config.ai_model,
     )
     publisher = EitaaPublisher(config.eitaa, config.inter_message_delay_seconds)
-    return Pipeline(fetch_engine, processor, publisher)
+
+    # راه‌اندازی دیتابیس در صورت عدم ارسال مقدار مستقیم
+    if database is None:
+        database = Database(config.database_path)
+
+    return Pipeline(fetch_engine, processor, publisher, database=database)
 
 
 def _print_report(report: ChannelRunReport) -> None:
@@ -53,12 +60,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     run_parser = subparsers.add_parser("run", help="اجرای pipeline برای کانال‌های تنظیم‌شده")
     run_parser.add_argument("--channel", action="append", dest="channels", help="یک کانال خاص (قابل تکرار)")
     run_parser.add_argument("--limit", type=int, default=10, help="حداکثر تعداد پست هر کانال")
-    run_parser.add_argument("--loop", action="store_true", help="اجرای مداوم و دوره‌ای پایپ‌لاین بر اساس زمان‌بندی")
+    run_parser.add_argument("--loop", action="store_true", help="اجرای مداوم و دوره‌ای پایپ‌لاین بر اساس زمان‌بندی قدیم")
+    run_parser.add_argument("--schedule", action="store_true", help="اجرای پایپ‌لاین با استفاده از سیستم زمان‌بند جدید")
 
     args = parser.parse_args(argv)
 
     if args.command == "run":
         config = load_config()
+
+        # فعال‌سازی سیستم لاگینگ
+        from .logging_config import setup_logging
+        setup_logging(config.log_level)
+
         channels = args.channels or config.source_channels
         if not channels:
             print("هیچ کانال منبعی تنظیم نشده است (SOURCE_CHANNELS یا --channel)", file=sys.stderr)
@@ -66,7 +79,21 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         pipeline = build_pipeline()
 
-        if args.loop:
+        if args.schedule:
+            print(f"شروع اجرای زمان‌بندی شده. بازه زمانی: {config.schedule_interval} ثانیه")
+            from .scheduler import Scheduler
+
+            def run_task():
+                print(f"\n--- شروع اجرای زمان‌بندی جدید در {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+                reports = pipeline.run(channels, limit=args.limit)
+                for report in reports:
+                    _print_report(report)
+
+            scheduler = Scheduler(config.schedule_interval, run_task)
+            scheduler.start()
+            return 0
+
+        elif args.loop:
             print(f"شروع اجرای دوره‌ای پایپ‌لاین. بازه زمانی: {config.fetch_interval_seconds} ثانیه")
             try:
                 while True:
