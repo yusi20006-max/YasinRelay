@@ -82,7 +82,7 @@ class SubprocessFetcher(FetchEngine):
             raise FetchError(f"fetcher برای کانال '{channel}' timeout شد") from exc
 
         try:
-            items = json.loads(result.stdout or "[]")
+            items = json.loads(result.stdout or "[]") or []
         except json.JSONDecodeError as exc:
             raise FetchError(f"خروجی fetcher برای '{channel}' JSON معتبر نبود") from exc
 
