@@ -12,6 +12,7 @@ eitaa_publisher.py
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -20,6 +21,8 @@ import requests
 
 from .ai_processor import ProcessedContent
 from .config import EitaaConfig
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -71,7 +74,7 @@ class EitaaPublisher:
                 from pathlib import Path
                 binary_path = "./fetcher/openfeed-fetch"
                 if Path(binary_path).exists():
-                    print(f"Downloading media via telemirror: {media_url}")
+                    logger.info(f"Downloading media via telemirror: {media_url}")
                     res = subprocess.run(
                         [binary_path, "download", "--url", media_url],
                         capture_output=True,
@@ -101,13 +104,13 @@ class EitaaPublisher:
                             "file": (file_name, file_bytes, mime_type)
                         }
                     else:
-                        print("Downloaded empty file bytes, falling back to URL")
+                        logger.warning("Downloaded empty file bytes, falling back to URL")
                         payload["file"] = media_url
                 else:
-                    print(f"Binary {binary_path} not found, falling back to URL")
+                    logger.warning(f"Binary {binary_path} not found, falling back to URL")
                     payload["file"] = media_url
             except Exception as e:
-                print(f"Failed to download media via telemirror: {e}, falling back to URL")
+                logger.error(f"Failed to download media via telemirror: {e}, falling back to URL", exc_info=True)
                 payload["file"] = media_url
 
         try:
