@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+logs/
+*.db
+fetcher/openfeed-fetch
+.env
+.pytest_cache/

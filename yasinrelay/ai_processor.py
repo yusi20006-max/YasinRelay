@@ -2,10 +2,7 @@
 ai_processor.py
 پردازش محتوای دریافت‌شده با AI: ترجمه، خلاصه‌سازی، بهبود متن.
 
-پیاده‌سازی واقعی (فراخوانی API یک مدل زبانی) عمداً اینجا نیست — این
-ماژول فقط یک رابط ساده (Processor) تعریف می‌کند تا بشه بعداً بک‌اند
-دلخواه (Anthropic API، مدل محلی، و ...) رو بدون تغییر pipeline جایگزین
-کرد.
+رابط‌های پردازش محتوا و پیاده‌سازی‌های مربوطه.
 """
 
 from __future__ import annotations
@@ -34,7 +31,31 @@ class ContentProcessor(ABC):
         raise NotImplementedError
 
 
-class PassthroughProcessor(ContentProcessor):
+class AIProcessor(ContentProcessor):
+    """رابط ارتقایافته برای پردازشگران مبتنی بر هوش مصنوعی."""
+
+    @abstractmethod
+    def summarize(self, text: str) -> str:
+        """خلاصه‌سازی متن."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def rewrite(self, text: str) -> str:
+        """بازنویسی متن."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def translate(self, text: str, target_lang: str = "persian") -> str:
+        """ترجمه متن به زبان مقصد."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_title(self, text: str) -> str:
+        """تولید عنوان مناسب برای متن."""
+        raise NotImplementedError
+
+
+class PassthroughProcessor(AIProcessor):
     """
     پردازشگر هوش مصنوعی واقعی که محتوای پست را با استفاده از API ارتقا یا ترجمه می‌دهد.
     در صورتی که کلید API (AI_API_KEY) تنظیم نشده باشد یا خطا رخ دهد، متن را بدون تغییر عبور می‌دهد.
@@ -84,6 +105,23 @@ class PassthroughProcessor(ContentProcessor):
             print(f"Failed to process content with AI: {exc}")
 
         return ProcessedContent(source_post=post, text=post.text)
+
+    def summarize(self, text: str) -> str:
+        """خلاصه‌سازی متن (در حالت passthrough متن اصلی برمی‌گردد)."""
+        return text
+
+    def rewrite(self, text: str) -> str:
+        """بازنویسی متن (در حالت passthrough متن اصلی برمی‌گردد)."""
+        return text
+
+    def translate(self, text: str, target_lang: str = "persian") -> str:
+        """ترجمه متن (در حالت passthrough متن اصلی برمی‌گردد)."""
+        return text
+
+    def generate_title(self, text: str) -> str:
+        """تولید عنوان مناسب (در حالت passthrough یک عنوان فرضی برمی‌گردد یا خالی)."""
+        words = text.split()
+        return " ".join(words[:5]) + "..." if len(words) > 5 else text
 
 
 class CallableProcessor(ContentProcessor):
