@@ -196,9 +196,11 @@ def test_publisher_success(mock_post):
     assert "sendMessage" in called_url
 
 
+@patch("subprocess.run")
 @patch("yasinrelay.eitaa_publisher.requests.post")
-def test_publisher_uses_sendfile_when_media_present(mock_post):
+def test_publisher_uses_sendfile_when_media_present(mock_post, mock_run):
     mock_post.return_value = Mock(status_code=200, text="ok")
+    mock_run.return_value = Mock(returncode=0, stdout=b"fake image bytes")
     publisher = _make_publisher()
 
     post = Post(channel="@news", message_id="1", text="hi", media_url="http://example.com/img.jpg")
@@ -207,6 +209,8 @@ def test_publisher_uses_sendfile_when_media_present(mock_post):
 
     called_url = mock_post.call_args[0][0]
     assert "sendFile" in called_url
+    assert mock_post.call_args[1]["files"] is not None
+    assert mock_post.call_args[1]["files"]["file"][1] == b"fake image bytes"
 
 
 @patch("yasinrelay.eitaa_publisher.requests.post")
