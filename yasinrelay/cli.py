@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+import logging
 from typing import List, Optional
 
 from .ai_processor import ContentProcessor, PassthroughProcessor
@@ -24,6 +25,8 @@ from .eitaa_publisher import EitaaPublisher
 from .fetch_engine import FetchEngine, SubprocessFetcher
 from .pipeline import ChannelRunReport, Pipeline
 from .storage.database import Database
+
+logger = logging.getLogger(__name__)
 
 
 def build_pipeline(
@@ -48,9 +51,9 @@ def build_pipeline(
 
 
 def _print_report(report: ChannelRunReport) -> None:
-    print(f"کانال {report.channel}: دریافت={report.fetched} منتشرشده={report.published}")
+    logger.info(f"گزارش کانال {report.channel}: دریافت={report.fetched} منتشرشده={report.published}")
     for err in report.errors:
-        print(f"  خطا: {err}")
+        logger.error(f"  خطا در گزارش کانال {report.channel}: {err}")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -74,17 +77,17 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         channels = args.channels or config.source_channels
         if not channels:
-            print("هیچ کانال منبعی تنظیم نشده است (SOURCE_CHANNELS یا --channel)", file=sys.stderr)
+            logger.error("هیچ کانال منبعی تنظیم نشده است (SOURCE_CHANNELS یا --channel)")
             return 1
 
         pipeline = build_pipeline()
 
         if args.schedule:
-            print(f"شروع اجرای زمان‌بندی شده. بازه زمانی: {config.schedule_interval} ثانیه")
+            logger.info(f"شروع اجرای زمان‌بندی شده. بازه زمانی: {config.schedule_interval} ثانیه")
             from .scheduler import Scheduler
 
             def run_task():
-                print(f"\n--- شروع اجرای زمان‌بندی جدید در {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+                logger.info(f"شروع اجرای زمان‌بندی جدید در {time.strftime('%Y-%m-%d %H:%M:%S')}")
                 reports = pipeline.run(channels, limit=args.limit)
                 for report in reports:
                     _print_report(report)
@@ -94,17 +97,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
 
         elif args.loop:
-            print(f"شروع اجرای دوره‌ای پایپ‌لاین. بازه زمانی: {config.fetch_interval_seconds} ثانیه")
+            logger.info(f"شروع اجرای دوره‌ای پایپ‌لاین. بازه زمانی: {config.fetch_interval_seconds} ثانیه")
             try:
                 while True:
-                    print(f"\n--- شروع اجرای جدید در {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+                    logger.info(f"شروع اجرای جدید در {time.strftime('%Y-%m-%d %H:%M:%S')}")
                     reports = pipeline.run(channels, limit=args.limit)
                     for report in reports:
                         _print_report(report)
-                    print(f"پایان اجرا. خوابیدن به مدت {config.fetch_interval_seconds} ثانیه...")
+                    logger.info(f"پایان اجرا. خوابیدن به مدت {config.fetch_interval_seconds} ثانیه...")
                     time.sleep(config.fetch_interval_seconds)
             except KeyboardInterrupt:
-                print("\nاجرای دوره‌ای با دستور کاربر متوقف شد.")
+                logger.info("اجرای دوره‌ای با دستور کاربر متوقف شد.")
                 return 0
         else:
             reports = pipeline.run(channels, limit=args.limit)

@@ -7,11 +7,14 @@ ai_processor.py
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 from .fetch_engine import Post
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -100,9 +103,9 @@ class PassthroughProcessor(AIProcessor):
                 processed_text = result["choices"][0]["message"]["content"].strip()
                 return ProcessedContent(source_post=post, text=processed_text)
             else:
-                print(f"AI API returned error {response.status_code}: {response.text}")
+                logger.error(f"AI API returned error {response.status_code}: {response.text}")
         except Exception as exc:
-            print(f"Failed to process content with AI: {exc}")
+            logger.error(f"Failed to process content with AI: {exc}", exc_info=True)
 
         return ProcessedContent(source_post=post, text=post.text)
 
