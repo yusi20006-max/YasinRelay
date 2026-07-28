@@ -96,71 +96,104 @@ func mapPost(p telemirror.Post) Post {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: openfeed-fetch fetch --channel <channel> --limit <limit>")
+		fmt.Println("Usage: openfeed-fetch <subcommand> [flags]")
+		fmt.Println("Subcommands:")
+		fmt.Println("  fetch     Fetch posts from a Telegram channel")
+		fmt.Println("  download  Download media from a URL using telemirror")
 		os.Exit(1)
 	}
 
 	subcommand := os.Args[1]
-	if subcommand != "fetch" {
+	if subcommand != "fetch" && subcommand != "download" {
 		fmt.Printf("Unknown subcommand: %s\n", subcommand)
 		os.Exit(1)
 	}
-
-	fetchCmd := flag.NewFlagSet("fetch", flag.ExitOnError)
-	channelFlag := fetchCmd.String("channel", "", "Telegram channel name")
-	limitFlag := fetchCmd.Int("limit", 10, "Maximum number of posts to fetch")
-
-	err := fetchCmd.Parse(os.Args[2:])
-	if err != nil {
-		fmt.Printf("Failed to parse flags: %v\n", err)
-		os.Exit(1)
-	}
-
-	channel := *channelFlag
-	if channel == "" {
-		fmt.Println("Error: --channel is required")
-		os.Exit(1)
-	}
-
-	channel = strings.TrimSpace(channel)
-	channel = strings.TrimPrefix(channel, "@")
-
-	limit := *limitFlag
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
 	client := telemirror.NewClient()
-	htmlBody, err := client.FetchHTML(ctx, channel)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching channel %s: %v\n", channel, err)
-		os.Exit(1)
-	}
 
-	_, parsedPosts, err := telemirror.ParseHTML(htmlBody)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing channel %s: %v\n", channel, err)
-		os.Exit(1)
-	}
+	if subcommand == "fetch" {
+		fetchCmd := flag.NewFlagSet("fetch", flag.ExitOnError)
+		channelFlag := fetchCmd.String("channel", "", "Telegram channel name")
+		limitFlag := fetchCmd.Int("limit", 10, "Maximum number of posts to fetch")
 
-	var posts []Post
-	for _, p := range parsedPosts {
-		posts = append(posts, mapPost(p))
-	}
+		err := fetchCmd.Parse(os.Args[2:])
+		if err != nil {
+			fmt.Printf("Failed to parse flags: %v\n", err)
+			os.Exit(1)
+		}
 
-	// Reverse to put the newest posts first
-	for i, j := 0, len(posts)-1; i < j; i, j = i+1, j-1 {
-		posts[i], posts[j] = posts[j], posts[i]
-	}
+		channel := *channelFlag
+		if channel == "" {
+			fmt.Println("Error: --channel is required")
+			os.Exit(1)
+		}
 
-	if limit > 0 && len(posts) > limit {
-		posts = posts[:limit]
-	}
+		channel = strings.TrimSpace(channel)
+		channel = strings.TrimPrefix(channel, "@")
 
-	jsonData, err := json.Marshal(posts)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-		os.Exit(1)
+		limit := *limitFlag
+
+		htmlBody, err := client.FetchHTML(ctx, channel)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching channel %s: %v\n", channel, err)
+			os.Exit(1)
+		}
+
+		_, parsedPosts, err := telemirror.ParseHTML(htmlBody)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing channel %s: %v\n", channel, err)
+			os.Exit(1)
+		}
+
+		var posts []Post
+		for _, p := range parsedPosts {
+			posts = append(posts, mapPost(p))
+		}
+
+		// Reverse to put the newest posts first
+		for i, j := 0, len(posts)-1; i < j; i, j = i+1, j-1 {
+			posts[i], posts[j] = posts[j], posts[i]
+		}
+
+		if limit > 0 && len(posts) > limit {
+			posts = posts[:limit]
+		}
+
+		jsonData, err := json.Marshal(posts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(jsonData))
+	} else if subcommand == "download" {
+		downloadCmd := flag.NewFlagSet("download", flag.ExitOnError)
+		urlFlag := downloadCmd.String("url", "", "URL of the media to download")
+
+		err := downloadCmd.Parse(os.Args[2:])
+		if err != nil {
+			fmt.Printf("Failed to parse flags: %v\n", err)
+			os.Exit(1)
+		}
+
+		urlStr := *urlFlag
+		if urlStr == "" {
+			fmt.Println("Error: --url is required")
+			os.Exit(1)
+		}
+
+		bytes, _, err := client.FetchDownload(ctx, urlStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error downloading URL %s: %v\n", urlStr, err)
+			os.Exit(1)
+		}
+
+		_, err = os.Stdout.Write(bytes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing download to stdout: %v\n", err)
+			os.Exit(1)
+		}
 	}
-	fmt.Println(string(jsonData))
 }

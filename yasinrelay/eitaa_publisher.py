@@ -62,11 +62,56 @@ class EitaaPublisher:
             "chat_id": self._config.channel,
             "text": content.text,
         }
+
+        files = None
         if media_url:
-            payload["file"] = media_url
+            # Try to download actual file bytes using openfeed-fetch download subcommand
+            try:
+                import subprocess
+                from pathlib import Path
+                binary_path = "./fetcher/openfeed-fetch"
+                if Path(binary_path).exists():
+                    print(f"Downloading media via telemirror: {media_url}")
+                    res = subprocess.run(
+                        [binary_path, "download", "--url", media_url],
+                        capture_output=True,
+                        check=True,
+                        timeout=30
+                    )
+                    file_bytes = res.stdout
+                    if file_bytes:
+                        # Determine a file name (e.g. image.jpg)
+                        file_name = "image.jpg"
+                        # Extract extension from url if possible
+                        if "." in media_url.split("/")[-1]:
+                            potential_name = media_url.split("/")[-1].split("?")[0]
+                            if len(potential_name) > 3:
+                                file_name = potential_name
+
+                        # Guess mime type or use image/jpeg
+                        mime_type = "image/jpeg"
+                        if file_name.endswith(".png"):
+                            mime_type = "image/png"
+                        elif file_name.endswith(".gif"):
+                            mime_type = "image/gif"
+                        elif file_name.endswith(".mp4"):
+                            mime_type = "video/mp4"
+
+                        files = {
+                            "file": (file_name, file_bytes, mime_type)
+                        }
+                    else:
+                        print("Downloaded empty file bytes, falling back to URL")
+                        payload["file"] = media_url
+                else:
+                    print(f"Binary {binary_path} not found, falling back to URL")
+                    payload["file"] = media_url
+            except Exception as e:
+                print(f"Failed to download media via telemirror: {e}, falling back to URL")
+                payload["file"] = media_url
 
         try:
-            response = requests.post(url, data=payload, timeout=30)
+            response = requests.post(url, data=payload, files=files, timeout=30)
             self._last_publish_time = time.time()
         except requests.RequestException as exc:
             raise PublishError(f"ارتباط با API ایتایار برقرار نشد: {exc}") from exc
