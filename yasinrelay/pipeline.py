@@ -30,6 +30,7 @@ from .pipeline_engine import (
     calculate_content_hash,
 )
 from .storage.database import Database
+from .event_bus import EventBus, get_event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -50,23 +51,25 @@ class Pipeline:
         publisher: EitaaPublisher,
         database: Optional[Database] = None,
         media_processor: Optional[MediaProcessor] = None,
+        event_bus: Optional[EventBus] = None,
     ) -> None:
         self._fetch_engine = fetch_engine
         self._processor = processor
         self._publisher = publisher
         self._db = database
         self._media_processor = media_processor or PassthroughMediaProcessor()
+        self._event_bus = event_bus or get_event_bus()
 
-        # راه‌اندازی مراحل موتور پایپ‌لاین جدید برای حفظ سازگاری
-        self._collector = CollectorStage(self._fetch_engine)
+        # راه‌اندازی مراحل موتور پایپ‌لاین جدید برای حفظ سازگاری و ارتباط با Event Bus
+        self._collector = CollectorStage(self._fetch_engine, event_bus=self._event_bus)
         self._pipeline_manager = PipelineManager([
-            NormalizerStage(),
-            ValidatorStage(),
-            DuplicateDetectionStage(self._db),
-            AIProcessorStage(self._processor),
-            MediaProcessorStage(self._media_processor),
-            PublisherStage(self._publisher, self._db),
-        ])
+            NormalizerStage(event_bus=self._event_bus),
+            ValidatorStage(event_bus=self._event_bus),
+            DuplicateDetectionStage(self._db, event_bus=self._event_bus),
+            AIProcessorStage(self._processor, event_bus=self._event_bus),
+            MediaProcessorStage(self._media_processor, event_bus=self._event_bus),
+            PublisherStage(self._publisher, self._db, event_bus=self._event_bus),
+        ], event_bus=self._event_bus)
 
     def run_channel(self, channel: str, limit: int = 10) -> ChannelRunReport:
         report = ChannelRunReport(channel=channel)

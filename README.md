@@ -315,3 +315,85 @@ discover_plugins("plugins")
 # دسترسی به پلاگین ثبت شده
 my_plugin = registry.get_plugin("my_custom_plugin")
 ```
+
+
+---
+
+## سیستم رویدادها و لایه یکپارچه‌سازی هسته (Core Event Bus & Integration Layer)
+
+هسته v2 پروژه YasinRelay به یک گذرگاه رویداد داخلی (Event Bus) و لایه ادغام (Integration Layer) مجهز شده است تا سیستم‌های خارجی (همچون YasinPress-AI-Engine، Yasin Agent و پلاگین‌ها) بتوانند بدون تغییر در معماری پایپ‌لاین هسته، با آن تعامل داشته باشند.
+
+### ۱. رویدادهای استاندارد هسته (Core Events)
+رویدادهای زیر در بخش‌های مختلف فرآیند پردازش و ارسال تولید و منتشر می‌شوند:
+- `ContentReceived` (دریافت پست خام در `CollectorStage`)
+- `ContentNormalized` (نرمال‌سازی موفق متن در `NormalizerStage`)
+- `DuplicateDetected` (تشخیص پست تکراری در `DuplicateDetectionStage`)
+- `ProcessingStarted` (آغاز رسمی پردازش آیتم در پایپ‌لاین)
+- `AIProcessingCompleted` (تکمیل فرآیند پردازش با هوش مصنوعی در `AIProcessorStage`)
+- `MediaProcessingCompleted` (تکمیل پردازش تصویر یا رسانه در `MediaProcessorStage`)
+- `PublishingStarted` (آغاز ارسال محتوا به مقصد در `PublisherStage`)
+- `PublishingCompleted` (انتشار نهایی کاملاً موفق محتوا در ایتا)
+- `ProcessingFailed` (وقوع استثنا یا بروز خطا و نامعتبر بودن در کل پایپ‌لاین)
+
+### ۲. مثال نحوه عضویت و گوش دادن به رویدادها (Event Bus Subscription)
+برای استفاده از گذرگاه رویداد، کافیست شنونده‌های خود را ثبت کنید. برای پایداری ۱۰۰٪ سیستم، وقوع خطا در هندلرها هرگز مانع اجرای ادامه فرآیند پایپ‌لاین نخواهد شد (Isolation):
+
+```python
+from yasinrelay import get_event_bus, EVENT_CONTENT_RECEIVED, PipelineEvent
+
+bus = get_event_bus()
+
+# ثبت شنونده برای یک رویداد خاص
+def on_new_content(event: PipelineEvent):
+    print(f"[شنونده] پست جدید دریافت شد: {event.content_id}")
+    print(f"محتوا: {event.payload.get('post', {}).get('text')}")
+
+bus.subscribe(EVENT_CONTENT_RECEIVED, on_new_content)
+
+# ثبت شنونده سراسری برای تمام رویدادها (Wildcard)
+def on_any_event(event: PipelineEvent):
+    print(f"[شنونده سراسری] رویداد {event.name} رخ داد.")
+
+bus.subscribe("*", on_any_event)
+```
+
+### ۳. لایه یکپارچه‌سازی و ثبت ارائه‌دهندگان سفارشی (Integration Layer & Custom Registry)
+با استفاده از `integration_registry` سراسری، سیستم‌های دیگر و افزونه‌ها می‌توانند پیاده‌سازی‌های سفارشی خود را برای بخش‌های مختلف هسته (مانند هوش مصنوعی، منابع فید، پردازشگر رسانه و ناشران جدید) بدون دستکاری کدهای هسته رجیستر و تزریق کنند:
+
+```python
+from yasinrelay import integration_registry, ContentProcessor, Post, ProcessedContent
+
+# ثبت یک ارائه‌دهنده هوش مصنوعی سفارشی با استفاده از دکوراتور
+@integration_registry.register_ai_provider("my_advanced_ai")
+class MyAdvancedAI(ContentProcessor):
+    def process(self, post: Post) -> ProcessedContent:
+        # پردازش سفارشی شما
+        return ProcessedContent(source_post=post, text=f"[پردازش‌شده با هوش مصنوعی من] {post.text}")
+
+# بازیابی ارائه‌دهنده
+ai_provider_cls = integration_registry.get_ai_provider("my_advanced_ai")
+```
+
+### ۴. ساختار افزونه‌های کامل (Complete Plugins Structure)
+برای افزودن قابلیت‌های چندگانه و بزرگ، می‌توانید کلاس افزونه‌ای تعریف کنید که از `IntegrationPlugin` ارث‌بری کرده و پس از ساخت، آن را رجیستر نمایید تا در زمان لود، هوک‌ها و شنونده‌های رویداد خود را متصل سازد:
+
+```python
+from yasinrelay import IntegrationPlugin, get_event_bus, EVENT_PUBLISHING_COMPLETED, PipelineEvent
+
+class AnalyticsPlugin(IntegrationPlugin):
+    @property
+    def plugin_name(self) -> str:
+        return "system_analytics"
+
+    def initialize(self, event_bus) -> None:
+        event_bus.subscribe(EVENT_PUBLISHING_COMPLETED, self.track_metrics)
+
+    def track_metrics(self, event: PipelineEvent):
+        # ذخیره آمارهای ارسال موفق
+        print(f"محتوای با شناسه {event.content_id} در تحلیل آماری ثبت شد.")
+```
+
+### ۵. متغیرهای پیکربندی جدید رویدادها
+می‌توانید قابلیت‌های فوق را از طریق فایل `.env` نیز شخصی‌سازی کنید:
+- `EVENT_BUS_ENABLED`: فعال یا غیرفعال کردن کل سیستم رویدادها (پیش‌فرض: `true`)
+- `EVENT_LOGGING_ENABLED`: ثبت لاگ‌های دیباگ ساختاریافته رویدادها در کنسول/فایل لاگ (پیش‌فرض: `true`)
