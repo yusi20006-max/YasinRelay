@@ -315,3 +315,139 @@ discover_plugins("plugins")
 # دسترسی به پلاگین ثبت شده
 my_plugin = registry.get_plugin("my_custom_plugin")
 ```
+
+
+---
+
+## سیستم رویدادها و لایه یکپارچه‌سازی هسته (Core Event Bus & Integration Layer)
+
+هسته v2 پروژه YasinRelay به یک گذرگاه رویداد داخلی (Event Bus) و لایه ادغام (Integration Layer) مجهز شده است تا سیستم‌های خارجی (همچون YasinPress-AI-Engine، Yasin Agent و پلاگین‌ها) بتوانند بدون تغییر در معماری پایپ‌لاین هسته، با آن تعامل داشته باشند.
+
+### ۱. رویدادهای استاندارد هسته (Core Events)
+رویدادهای زیر در بخش‌های مختلف فرآیند پردازش و ارسال تولید و منتشر می‌شوند:
+- `ContentReceived` (دریافت پست خام در `CollectorStage`)
+- `ContentNormalized` (نرمال‌سازی موفق متن در `NormalizerStage`)
+- `DuplicateDetected` (تشخیص پست تکراری در `DuplicateDetectionStage`)
+- `ProcessingStarted` (آغاز رسمی پردازش آیتم در پایپ‌لاین)
+- `AIProcessingCompleted` (تکمیل فرآیند پردازش با هوش مصنوعی در `AIProcessorStage`)
+- `MediaProcessingCompleted` (تکمیل پردازش تصویر یا رسانه در `MediaProcessorStage`)
+- `PublishingStarted` (آغاز ارسال محتوا به مقصد در `PublisherStage`)
+- `PublishingCompleted` (انتشار نهایی کاملاً موفق محتوا در ایتا)
+- `ProcessingFailed` (وقوع استثنا یا بروز خطا و نامعتبر بودن در کل پایپ‌لاین)
+
+### ۲. مثال نحوه عضویت و گوش دادن به رویدادها (Event Bus Subscription)
+برای استفاده از گذرگاه رویداد، کافیست شنونده‌های خود را ثبت کنید. برای پایداری ۱۰۰٪ سیستم، وقوع خطا در هندلرها هرگز مانع اجرای ادامه فرآیند پایپ‌لاین نخواهد شد (Isolation):
+
+```python
+from yasinrelay import get_event_bus, EVENT_CONTENT_RECEIVED, PipelineEvent
+
+bus = get_event_bus()
+
+# ثبت شنونده برای یک رویداد خاص
+def on_new_content(event: PipelineEvent):
+    print(f"[شنونده] پست جدید دریافت شد: {event.content_id}")
+    print(f"محتوا: {event.payload.get('post', {}).get('text')}")
+
+bus.subscribe(EVENT_CONTENT_RECEIVED, on_new_content)
+
+# ثبت شنونده سراسری برای تمام رویدادها (Wildcard)
+def on_any_event(event: PipelineEvent):
+    print(f"[شنونده سراسری] رویداد {event.name} رخ داد.")
+
+bus.subscribe("*", on_any_event)
+```
+
+### ۳. لایه یکپارچه‌سازی و ثبت ارائه‌دهندگان سفارشی (Integration Layer & Custom Registry)
+با استفاده از `integration_registry` سراسری، سیستم‌های دیگر و افزونه‌ها می‌توانند پیاده‌سازی‌های سفارشی خود را برای بخش‌های مختلف هسته (مانند هوش مصنوعی، منابع فید، پردازشگر رسانه و ناشران جدید) بدون دستکاری کدهای هسته رجیستر و تزریق کنند:
+
+```python
+from yasinrelay import integration_registry, ContentProcessor, Post, ProcessedContent
+
+# ثبت یک ارائه‌دهنده هوش مصنوعی سفارشی با استفاده از دکوراتور
+@integration_registry.register_ai_provider("my_advanced_ai")
+class MyAdvancedAI(ContentProcessor):
+    def process(self, post: Post) -> ProcessedContent:
+        # پردازش سفارشی شما
+        return ProcessedContent(source_post=post, text=f"[پردازش‌شده با هوش مصنوعی من] {post.text}")
+
+# بازیابی ارائه‌دهنده
+ai_provider_cls = integration_registry.get_ai_provider("my_advanced_ai")
+```
+
+### ۴. ساختار افزونه‌های کامل (Complete Plugins Structure)
+برای افزودن قابلیت‌های چندگانه و بزرگ، می‌توانید کلاس افزونه‌ای تعریف کنید که از `IntegrationPlugin` ارث‌بری کرده و پس از ساخت، آن را رجیستر نمایید تا در زمان لود، هوک‌ها و شنونده‌های رویداد خود را متصل سازد:
+
+```python
+from yasinrelay import IntegrationPlugin, get_event_bus, EVENT_PUBLISHING_COMPLETED, PipelineEvent
+
+class AnalyticsPlugin(IntegrationPlugin):
+    @property
+    def plugin_name(self) -> str:
+        return "system_analytics"
+
+    def initialize(self, event_bus) -> None:
+        event_bus.subscribe(EVENT_PUBLISHING_COMPLETED, self.track_metrics)
+
+    def track_metrics(self, event: PipelineEvent):
+        # ذخیره آمارهای ارسال موفق
+        print(f"محتوای با شناسه {event.content_id} در تحلیل آماری ثبت شد.")
+```
+
+### ۵. متغیرهای پیکربندی جدید رویدادها
+می‌توانید قابلیت‌های فوق را از طریق فایل `.env` نیز شخصی‌سازی کنید:
+- `EVENT_BUS_ENABLED`: فعال یا غیرفعال کردن کل سیستم رویدادها (پیش‌فرض: `true`)
+- `EVENT_LOGGING_ENABLED`: ثبت لاگ‌های دیباگ ساختاریافته رویدادها در کنسول/فایل لاگ (پیش‌فرض: `true`)
+
+
+---
+
+## معماری پلاگین‌ها و سیستم گسترش‌پذیری (Plugin Architecture & Extension System)
+
+در نسخه ۲ فاز ۴، پروژه YasinRelay به یک پلتفرم پلاگین تمام عیار مجهز شده است که به توسعه‌دهندگان اجازه می‌دهد بدون دستکاری در کدهای هسته سیستم، قابلیت‌های جدیدی را به برنامه اضافه کنند.
+
+### ۱. انواع اینترفیس‌های پلاگین (Plugin Interfaces)
+افزونه‌ها می‌توانند یکی از اینترفیس‌های استاندارد زیر را پیاده‌سازی کنند:
+- **`SourcePlugin`**: جهت دریافت فید و اطلاعات از منابع جدید (سازگار با `FetchEngine`)
+- **`AIPlugin`**: جهت ویرایش، تحلیل و خلاصه سازی پیام‌ها (سازگار با `ContentProcessor`)
+- **`MediaPlugin`**: برای پیش‌پردازش رسانه‌ها و تصاویر (سازگار با `MediaProcessor`)
+- **`PublisherPlugin`**: برای ارسال و انتشار مطالب در پلتفرم‌های خارجی و جدید
+
+### ۲. نحوه ساخت یک پلاگین جدید (Creating a Plugin)
+برای ساخت پلاگین، کافیست کلاسی بنویسید که از یکی از اینترفیس‌ها ارث‌بری داشته باشد و آن را در پوشه `plugins/` در ریشه پروژه قرار دهید:
+
+```python
+# plugins/my_ai_plugin.py
+from yasinrelay.plugins import AIPlugin
+from yasinrelay.fetch_engine import Post
+from yasinrelay.ai_processor import ProcessedContent
+
+class AdvancedAIPlugin(AIPlugin):
+    @property
+    def plugin_id(self) -> str:
+        return "my_advanced_ai"
+
+    @property
+    def name(self) -> str:
+        return "Advanced Custom AI Plugin"
+
+    def process(self, post: Post) -> ProcessedContent:
+        # پردازش سفارشی شما
+        return ProcessedContent(source_post=post, text=f"[تزیین‌شده توسط AI] {post.text}")
+```
+
+### ۳. مدیریت چرخه حیات (Plugin Lifecycle)
+پلاگین‌ها دارای چرخه حیات کامل هستند و متدهای `initialize` و `shutdown` آن‌ها به صورت پویا صدا زده می‌شوند:
+```python
+    def initialize(self, event_bus, registry):
+        # عضویت در رویدادها
+        event_bus.subscribe("ContentReceived", self.log_receive)
+
+    def shutdown(self):
+        # آزادسازی منابع
+        pass
+```
+
+### ۴. پیکربندی و متغیرهای جدید سیستم پلاگین‌ها
+- `ENABLED_PLUGINS`: لیست شناسه‌های پلاگین‌های فعال (جداشده با کاما، مثلاً `ENABLED_PLUGINS=my_advanced_ai,another_plugin`)
+- `PLUGIN_PATHS`: مسیرهای جستجوی پلاگین‌ها (پیش‌فرض: `plugins,yasinrelay/plugins`)
+- `PLUGIN_SETTINGS_JSON`: تنظیمات اختصاصی هر پلاگین با فرمت استاندارد JSON (مثلاً `{"my_advanced_ai": {"api_key": "123"}}`)

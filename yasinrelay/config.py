@@ -7,9 +7,10 @@ config.py
 
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 try:
     from dotenv import load_dotenv
@@ -39,6 +40,11 @@ class RelayConfig:
     log_level: str = "INFO"
     schedule_interval: int = 1800  # ۳۰ دقیقه به عنوان مقدار پیش‌فرض
     ai_provider: str = "passthrough"
+    event_bus_enabled: bool = True
+    event_logging_enabled: bool = True
+    enabled_plugins: List[str] = field(default_factory=list)
+    plugin_paths: List[str] = field(default_factory=lambda: ["plugins", "yasinrelay/plugins"])
+    plugin_settings: Dict[str, Any] = field(default_factory=dict)
 
 
 def load_config() -> RelayConfig:
@@ -61,6 +67,26 @@ def load_config() -> RelayConfig:
 
     ai_provider = os.environ.get("AI_PROVIDER", "passthrough")
 
+    # رویدادها و گذرگاه رویداد داخلی
+    event_bus_enabled = os.environ.get("EVENT_BUS_ENABLED", "true").lower() in ("true", "1", "yes")
+    event_logging_enabled = os.environ.get("EVENT_LOGGING_ENABLED", "true").lower() in ("true", "1", "yes")
+
+    # تنظیمات پلاگین‌ها
+    enabled_plugins_raw = os.environ.get("ENABLED_PLUGINS", "")
+    enabled_plugins = [p.strip() for p in enabled_plugins_raw.split(",") if p.strip()]
+
+    plugin_paths_raw = os.environ.get("PLUGIN_PATHS", "")
+    if plugin_paths_raw:
+        plugin_paths = [p.strip() for p in plugin_paths_raw.split(",") if p.strip()]
+    else:
+        plugin_paths = ["plugins", "yasinrelay/plugins"]
+
+    plugin_settings_raw = os.environ.get("PLUGIN_SETTINGS_JSON", "{}")
+    try:
+        plugin_settings = json.loads(plugin_settings_raw)
+    except Exception:
+        plugin_settings = {}
+
     return RelayConfig(
         eitaa=EitaaConfig(token=token, channel=channel),
         source_channels=sources,
@@ -73,4 +99,9 @@ def load_config() -> RelayConfig:
         log_level=log_level,
         schedule_interval=schedule_interval,
         ai_provider=ai_provider,
+        event_bus_enabled=event_bus_enabled,
+        event_logging_enabled=event_logging_enabled,
+        enabled_plugins=enabled_plugins,
+        plugin_paths=plugin_paths,
+        plugin_settings=plugin_settings,
     )
