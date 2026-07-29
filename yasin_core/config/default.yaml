@@ -1,0 +1,12 @@
+app:
+  name: Yasin Core
+  version: 0.1.0
+
+runtime:
+  mode: development
+
+plugins:
+  enabled: []
+
+providers:
+  default: local

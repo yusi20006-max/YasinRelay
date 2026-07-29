@@ -1,7 +1,13 @@
 __pycache__/
 *.pyc
-logs/
-*.db
-fetcher/openfeed-fetch
+
 .env
+
+.venv/
+
 .pytest_cache/
+
+*.log
+
+dist/
+build/

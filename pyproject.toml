@@ -1,0 +1,16 @@
+[project]
+name = "yasin-core"
+version = "0.1.0"
+description = "Core runtime for Yasin AI Ecosystem"
+requires-python = ">=3.10"
+
+dependencies = [
+    "pyyaml",
+    "python-dotenv"
+]
+
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests"
+]
