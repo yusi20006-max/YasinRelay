@@ -39,6 +39,8 @@ class RelayConfig:
     log_level: str = "INFO"
     schedule_interval: int = 1800  # ۳۰ دقیقه به عنوان مقدار پیش‌فرض
     ai_provider: str = "passthrough"
+    event_bus_enabled: bool = True
+    event_logging_enabled: bool = True
 
 
 def load_config() -> RelayConfig:
@@ -61,6 +63,10 @@ def load_config() -> RelayConfig:
 
     ai_provider = os.environ.get("AI_PROVIDER", "passthrough")
 
+    # رویدادها و گذرگاه رویداد داخلی
+    event_bus_enabled = os.environ.get("EVENT_BUS_ENABLED", "true").lower() in ("true", "1", "yes")
+    event_logging_enabled = os.environ.get("EVENT_LOGGING_ENABLED", "true").lower() in ("true", "1", "yes")
+
     return RelayConfig(
         eitaa=EitaaConfig(token=token, channel=channel),
         source_channels=sources,
@@ -73,4 +79,6 @@ def load_config() -> RelayConfig:
         log_level=log_level,
         schedule_interval=schedule_interval,
         ai_provider=ai_provider,
+        event_bus_enabled=event_bus_enabled,
+        event_logging_enabled=event_logging_enabled,
     )

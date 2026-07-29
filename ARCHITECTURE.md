@@ -93,3 +93,51 @@ class WatermarkStage(PipelineStage):
             context.processed_media_url = apply_watermark(context.processed_media_url)
         return context
 ```
+
+---
+
+## Core Event Bus & Integration Layer Architecture
+
+To support high extensibility and decoupling, YasinRelay Core v2 implements a native **Core Event Bus** and a structured **Integration Layer**. This enables future external systems (e.g., YasinPress-AI-Engine, AI Agents, external analytics/logging, or plugins) to hook into any step of the pipeline.
+
+### High-Level Event Flow
+
+```
++----------------+      publish(ContentReceived)       +-------------------+
+| CollectorStage | ----------------------------------> |                   |
++----------------+                                     |                   |
+                                                       |                   |
++-----------------+     publish(ContentNormalized)     |                   |
+| NormalizerStage | ---------------------------------> |     EventBus      |
++-----------------+                                     |                   |
+                                                       |   (Distributes    |
+       ...                                             |    events to      |
+                                                       |    subscribed     |
++-----------------+     publish(PublishingCompleted)   |    listeners)     |
+| PublisherStage  | ---------------------------------> |                   |
++-----------------+                                     |                   |
+                                                       |                   |
++-----------------+     publish(ProcessingFailed)      |                   |
+| PipelineManager | ---------------------------------> |                   |
++-----------------+                                    +---------+---------+
+                                                                 |
+                                                                 v
+                                                       +-------------------+
+                                                       | Subscribed        |
+                                                       | Handlers/Plugins  |
+                                                       +-------------------+
+```
+
+### Event System Details
+- **`PipelineEvent`**: The standardized dataclass representing events. It includes the event `name`, `timestamp` (when it occurred), a unique `content_id` (usually `source_channel:message_id` or equivalent), the `payload` dictionary with event-specific data (e.g., the serialized post or normalized text), and a `metadata` dictionary.
+- **`EventBus`**: Supports publishing (`publish()`), subscribing to specific events or all events via wildcard (`subscribe()`), unsubscribing (`unsubscribe()`), and clearing all handlers (`clear()`).
+- **Handler Failure Isolation**: All event handlers are executed within isolated `try/except` blocks. If an event listener raises an unhandled exception, it is logged and recorded, but the exception **never** halts the main pipeline execution.
+- **Configurable Control**: The entire event bus and logging can be toggled using environment configurations (`EVENT_BUS_ENABLED`, `EVENT_LOGGING_ENABLED`).
+
+### Integration Layer & Plugins Foundation
+- **`IntegrationRegistry`**: A central hub that maintains mappings for third-party extensions. It features decorator-friendly registration APIs for:
+  - Custom AI Content Processors (`register_ai_provider`)
+  - Custom Feed Sources (`register_feed_source`)
+  - Custom Destination Publishers (`register_publisher`)
+  - Custom Media Processors (`register_media_processor`)
+- **`IntegrationPlugin`**: An abstract interface that developers of external systems inherit to create complex, cohesive plugin packages. These plugins are registerable inside `IntegrationRegistry` and initialized with the system `EventBus` to bind custom handlers/logic.
