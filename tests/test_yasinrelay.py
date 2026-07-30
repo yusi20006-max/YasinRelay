@@ -8,11 +8,21 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+import yasinrelay
 from yasinrelay.ai_processor import CallableProcessor, PassthroughProcessor
 from yasinrelay.config import EitaaConfig
 from yasinrelay.eitaa_publisher import EitaaPublisher, PublishError
 from yasinrelay.fetch_engine import FakeFetcher, FetchError, Post, SubprocessFetcher
 from yasinrelay.pipeline import Pipeline
+
+
+# ---------------------------------------------------------------------------
+# Version Test
+# ---------------------------------------------------------------------------
+
+def test_yasinrelay_version():
+    """بررسی اینکه نسخه پکیج به درستی روی 1.1.1 تنظیم شده است."""
+    assert yasinrelay.__version__ == "1.1.1"
 
 
 # ---------------------------------------------------------------------------
