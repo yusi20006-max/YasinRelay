@@ -104,4 +104,36 @@ class Pipeline:
         return report
 
     def run(self, channels: List[str], limit: int = 10) -> List[ChannelRunReport]:
-        return [self.run_channel(channel, limit=limit) for channel in channels]
+        try:
+            reports = [self.run_channel(channel, limit=limit) for channel in channels]
+
+            # هماهنگ‌سازی و ثبت وضعیت با YasinHub در پایان اجرا
+            total_fetched = sum(r.fetched for r in reports)
+            total_published = sum(r.published for r in reports)
+            all_errors = []
+            for r in reports:
+                all_errors.extend(r.errors)
+
+            success = len(all_errors) == 0
+            if success:
+                msg = f"{total_published} پست با موفقیت منتشر شد (از {total_fetched} پست دریافت شده)"
+            else:
+                msg = f"خطا در رله پست‌ها: {', '.join(all_errors[:3])}"
+                if len(all_errors) > 3:
+                    msg += " ..."
+
+            try:
+                from .hub_integration import report_hub_status
+                report_hub_status(success=success, message=msg)
+            except Exception as e:
+                logger.warning(f"خطا در ثبت وضعیت در YasinHub: {e}")
+
+            return reports
+        except Exception as exc:
+            msg = f"خطای بحرانی در اجرای پایپ‌لاین: {exc}"
+            try:
+                from .hub_integration import report_hub_status
+                report_hub_status(success=False, message=msg)
+            except Exception:
+                pass
+            raise exc
