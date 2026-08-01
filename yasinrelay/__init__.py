@@ -25,6 +25,22 @@ from .event_bus import (
     EVENT_PROCESSING_FAILED,
 )
 from .integration import IntegrationPlugin, IntegrationRegistry, integration_registry
+from .router import (
+    BaseTransport,
+    EitaaTransport,
+    MockTransport,
+    RoutingRule,
+    ChannelRule,
+    KeywordRule,
+    RegexRule,
+    MessageRouter,
+    EVENT_ROUTING_STARTED,
+    EVENT_ROUTE_MATCHED,
+    EVENT_ROUTE_SKIPPED,
+    EVENT_ROUTE_FAILED,
+    EVENT_DELIVERY_COMPLETED,
+    EVENT_DELIVERY_FAILED,
+)
 
 __all__ = [
     "CallableProcessor",
@@ -61,6 +77,21 @@ __all__ = [
     "IntegrationPlugin",
     "IntegrationRegistry",
     "integration_registry",
+    # هدایت پیام و انتقال
+    "BaseTransport",
+    "EitaaTransport",
+    "MockTransport",
+    "RoutingRule",
+    "ChannelRule",
+    "KeywordRule",
+    "RegexRule",
+    "MessageRouter",
+    "EVENT_ROUTING_STARTED",
+    "EVENT_ROUTE_MATCHED",
+    "EVENT_ROUTE_SKIPPED",
+    "EVENT_ROUTE_FAILED",
+    "EVENT_DELIVERY_COMPLETED",
+    "EVENT_DELIVERY_FAILED",
 ]
 
 __version__ = "1.1.1"
