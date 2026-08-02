@@ -10,6 +10,25 @@ import os
 from logging.handlers import RotatingFileHandler
 
 
+class SensitiveMaskingFormatter(logging.Formatter):
+    """فرمت‌کننده سفارشی لاگ برای سانسور و حذف توکن‌ها و کلیدهای امنیتی حساس."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        formatted = super().format(record)
+
+        # دریافت کلیدهای حساس از محیط جهت فیلتر کردن هوشمند
+        eitaa_token = os.environ.get("EITAA_TOKEN", "")
+        ai_api_key = os.environ.get("AI_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+
+        if eitaa_token and len(eitaa_token) > 3:
+            formatted = formatted.replace(eitaa_token, "[EITAA_TOKEN_REDACTED]")
+
+        if ai_api_key and len(ai_api_key) > 3:
+            formatted = formatted.replace(ai_api_key, "[AI_API_KEY_REDACTED]")
+
+        return formatted
+
+
 def setup_logging(log_level: str = "INFO") -> None:
     # ساختن پوشه لاگ‌ها در صورت عدم وجود
     os.makedirs("logs", exist_ok=True)
@@ -24,8 +43,8 @@ def setup_logging(log_level: str = "INFO") -> None:
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # فرمت لاگ‌ها
-    formatter = logging.Formatter(
+    # فرمت لاگ‌ها به همراه قابلیت سانسور اطلاعات حساس
+    formatter = SensitiveMaskingFormatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
