@@ -1,6 +1,6 @@
-# YasinRelay Core v2 Architecture
+# YasinRelay Core v2 Architecture (v2.0.0 Stable Release)
 
-This document describes the high-level architecture of YasinRelay Core v2 after the successful merge of FeedBridge and OpenFeed and the implementation of the Phase 2 Pipeline Engine.
+This document describes the high-level architecture of YasinRelay Core v2 (v2.0.0 Stable) after the successful integration of FeedBridge and OpenFeed, implementation of the Phase 2 Pipeline Engine, and final production validation with the Yasin Ecosystem.
 
 ---
 
@@ -141,3 +141,21 @@ To support high extensibility and decoupling, YasinRelay Core v2 implements a na
   - Custom Destination Publishers (`register_publisher`)
   - Custom Media Processors (`register_media_processor`)
 - **`IntegrationPlugin`**: An abstract interface that developers of external systems inherit to create complex, cohesive plugin packages. These plugins are registerable inside `IntegrationRegistry` and initialized with the system `EventBus` to bind custom handlers/logic.
+
+---
+
+## High-Reliability Ecosystem Architecture (v2.0.0 Updates)
+
+To satisfy production-grade validation and full backward-compatibility, YasinRelay v2.0.0 features three major cross-cutting layers:
+
+### 1. Message Router & Transport Layer
+- **`MessageRouter`**: Provides rule-based content redirection, prioritizations, and message delivery.
+- **Transports**: Inherits from `BaseTransport` (e.g., `EitaaTransport`, `MockTransport`).
+- **DLQ & Retry Loops**: Preserves failed-message logs locally and enables automatic retry routines.
+
+### 2. Runtime Monitoring & Health Layer
+- **`HealthMonitor`**: Subscribes as a wildcard listener to the main Event Bus to track statistics (fetched, published, failed, uptime) and check hardware/network/dependency availability dynamically.
+- Fully exposed through the public SDK client (`YasinRelayClient.get_status()`) and integrated with YasinHub Fallback status reporters.
+
+### 3. Agent Communication Subsystem
+- **`AgentCommunicator`**: Manages state synchronizations, executes remote instructions, and handles network-safe agent message exchanges.
