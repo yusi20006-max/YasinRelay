@@ -58,32 +58,32 @@ class YasinRelayClient:
             except Exception as e:
                 logger.debug(f"Pgrep check failed (possibly unsupported platform/permissions): {e}")
 
-            # محاسبه تعداد پست‌های پردازش شده و ارسال شده از پایگاه‌داده
-            total_posts = 0
-            published_posts = 0
-            try:
-                conn = self._db._get_connection()
-                try:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT COUNT(*) FROM posts")
-                    total_posts = cursor.fetchone()[0]
+            # دریافت گزارش سلامت جامع از لایه مانیتورینگ
+            from yasinrelay.monitoring import get_health_monitor
+            monitor = get_health_monitor()
+            report = monitor.get_health_report(self._db)
 
-                    cursor.execute("SELECT COUNT(*) FROM posts WHERE status = 'published'")
-                    published_posts = cursor.fetchone()[0]
-                finally:
-                    if self._db._conn is None:
-                        conn.close()
-            except Exception as e:
-                logger.warning(f"Failed to query stats from SQLite database: {e}")
+            # ادغام و حفظ سازگاری کامل با کلیدهای قدیمی
+            # برای حفظ سازگاری ۱۰۰٪ با کلید status قدیمی، وضعیت دقیقاً "active" در صورت در حال اجرا بودن پروسس و "idle" در غیر این صورت بازگردانده می‌شود.
+            # اطلاعات تفصیلی و داینامیک سلامت (از جمله active, degraded, error) در ساختار جدید health قرار دارد.
+            status_val = "active" if is_running else "idle"
 
-            return {
-                "status": "active" if is_running else "idle",
+            result = {
+                "status": status_val,
                 "active_rules": len(self._config.source_channels),
-                "processed_messages": total_posts,
-                "published_messages": published_posts,
+                "processed_messages": report["db_stats"]["total_posts"],
+                "published_messages": report["db_stats"]["published_posts"],
                 "source_channels": self._config.source_channels,
                 "destination_channel": self._config.eitaa.channel,
+                "health": report,
+                "uptime_seconds": report["uptime_seconds"],
+                "last_run_time": report["last_run_time"],
+                "metrics": report["metrics"],
+                "connections": report["connections"],
+                "db_stats": report["db_stats"],
+                "last_error": report["last_error"],
             }
+            return result
         except Exception as e:
             logger.error(f"Error getting YasinRelay status: {e}")
             return {"status": "error", "error": str(e)}
