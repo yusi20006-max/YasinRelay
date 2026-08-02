@@ -32,9 +32,13 @@ class YasinRelayClient:
         در اینجا با بررسی و تایید دسترسی به پایگاه‌داده و معتبر بودن تنظیمات، وضعیت اتصال را تایید می‌کنیم.
         """
         try:
-            # بررسی دسترسی دیتابیس با وجود داشتن پست آزمایشی یا ساختار معتبر جدول
-            self._db.exists("test_source", "test_id")
-            return True
+            conn = self._db._get_connection()
+            try:
+                conn.execute("SELECT 1")
+                return True
+            finally:
+                if self._db._conn is None:
+                    conn.close()
         except Exception as e:
             logger.error(f"Error connecting to YasinRelay: {e}")
             return False
@@ -51,22 +55,26 @@ class YasinRelayClient:
                 res = subprocess.run(["pgrep", "-f", "yasinrelay.cli"], capture_output=True, text=True)
                 if res.returncode == 0 and res.stdout.strip():
                     is_running = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Pgrep check failed (possibly unsupported platform/permissions): {e}")
 
             # محاسبه تعداد پست‌های پردازش شده و ارسال شده از پایگاه‌داده
             total_posts = 0
             published_posts = 0
             try:
                 conn = self._db._get_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM posts")
-                total_posts = cursor.fetchone()[0]
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM posts")
+                    total_posts = cursor.fetchone()[0]
 
-                cursor.execute("SELECT COUNT(*) FROM posts WHERE status = 'published'")
-                published_posts = cursor.fetchone()[0]
-            except Exception:
-                pass
+                    cursor.execute("SELECT COUNT(*) FROM posts WHERE status = 'published'")
+                    published_posts = cursor.fetchone()[0]
+                finally:
+                    if self._db._conn is None:
+                        conn.close()
+            except Exception as e:
+                logger.warning(f"Failed to query stats from SQLite database: {e}")
 
             return {
                 "status": "active" if is_running else "idle",
