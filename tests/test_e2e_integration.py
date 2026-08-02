@@ -1,6 +1,6 @@
 """
 tests/test_e2e_integration.py
-تست‌های ادغام سرتاسری (End-to-End Integration Tests) برای YasinRelay v1.1.1.
+تست‌های ادغام سرتاسری (End-to-End Integration Tests) برای YasinRelay v2.0.0.
 این تست‌ها همگام‌سازی کامل زیر را ارزیابی می‌کنند:
 - موتور پایپ‌لاین (Pipeline Engine)
 - لایه ذخیره‌سازی SQLite برای حذف تکراری‌ها
