@@ -44,11 +44,21 @@ def report_hub_status(success: bool, message: str) -> None:
         status_dir.mkdir(parents=True, exist_ok=True)
         path = status_dir / "yasinrelay.json"
 
+        # دریافت اطلاعات سلامت از مانیتورینگ برای گزارش به هاب
+        health_report = None
+        try:
+            from .monitoring import get_health_monitor
+            health_report = get_health_monitor().get_health_report()
+        except Exception as e:
+            logger.debug(f"[YasinHub Integration] خطا در واکشی گزارش سلامت برای هاب: {e}")
+
         payload = {
             "last_run": datetime.now(timezone.utc).isoformat(),
             "success": success,
             "message": message,
         }
+        if health_report:
+            payload["health"] = health_report
 
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         logger.info(f"[YasinHub Integration] فایل وضعیت مستقیماً در مسیر '{path}' ذخیره شد.")
