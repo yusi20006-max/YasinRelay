@@ -6,10 +6,13 @@ database.py
 from __future__ import annotations
 
 import sqlite3
+import logging
 from datetime import datetime
 from typing import List, Optional
 
 from .models import DBPost
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -24,9 +27,13 @@ class Database:
     def _get_connection(self) -> sqlite3.Connection:
         if self._conn is not None:
             return self._conn
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except sqlite3.Error as exc:
+            logger.error(f"خطا در ایجاد اتصال به پایگاه‌داده '{self.db_path}': {exc}", exc_info=True)
+            raise
 
     def _init_db(self) -> None:
         conn = self._get_connection()
@@ -52,6 +59,9 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_posts_content_hash ON posts(content_hash)"
             )
             conn.commit()
+        except sqlite3.Error as exc:
+            logger.error(f"خطا در ساختاردهی پایگاه‌داده: {exc}", exc_info=True)
+            raise
         finally:
             if self._conn is None:
                 conn.close()
@@ -83,6 +93,9 @@ class Database:
             if post.id is None:
                 post.id = cursor.lastrowid
             return post
+        except sqlite3.Error as exc:
+            logger.error(f"خطا در ذخیره‌سازی پست در پایگاه‌داده: {exc}", exc_info=True)
+            raise
         finally:
             if self._conn is None:
                 conn.close()
@@ -99,6 +112,9 @@ class Database:
             if not row:
                 return None
             return self._row_to_post(row)
+        except sqlite3.Error as exc:
+            logger.error(f"خطا در دریافت پست از پایگاه‌داده: {exc}", exc_info=True)
+            raise
         finally:
             if self._conn is None:
                 conn.close()
@@ -118,6 +134,9 @@ class Database:
                     (source, source_message_id),
                 )
             return cursor.fetchone() is not None
+        except sqlite3.Error as exc:
+            logger.error(f"خطا در بررسی وجود پست در پایگاه‌داده: {exc}", exc_info=True)
+            raise
         finally:
             if self._conn is None:
                 conn.close()
@@ -136,6 +155,9 @@ class Database:
             )
             conn.commit()
             return cursor.rowcount > 0
+        except sqlite3.Error as exc:
+            logger.error(f"خطا در به‌روزرسانی وضعیت انتشار پست در پایگاه‌داده: {exc}", exc_info=True)
+            raise
         finally:
             if self._conn is None:
                 conn.close()
@@ -149,6 +171,9 @@ class Database:
             )
             rows = cursor.fetchall()
             return [self._row_to_post(row) for row in rows]
+        except sqlite3.Error as exc:
+            logger.error(f"خطا در دریافت لیست پست‌های اخیر از پایگاه‌داده: {exc}", exc_info=True)
+            raise
         finally:
             if self._conn is None:
                 conn.close()
