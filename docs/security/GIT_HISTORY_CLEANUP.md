@@ -33,7 +33,7 @@ The known secret lived in the tracked file `.env`.
 Therefore the **primary and correct** rewrite action is:
 
 ```bash
-git filter-repo --path .env --invert-paths
+git filter-repo --path .env --invert-paths --quiet
 ```
 
 This removes the path `.env` from every historical commit.
@@ -41,8 +41,8 @@ This removes the path `.env` from every historical commit.
 Do **not** use a key-name replacement such as `EITAA_TOKEN==>REDACTED`.
 That leaves the actual token value intact and is insufficient.
 
-After path removal, a presence-only scan for `EITAA_TOKEN` is required.
-If the string still appears elsewhere, the workflow stops with:
+After path removal, presence-only scans for `EITAA_TOKEN` and broader credential-like patterns are required.
+If anything remains, the workflow stops with:
 
 ```text
 POTENTIAL_REMAINING_CREDENTIAL: REDACTED
@@ -61,6 +61,7 @@ File: `.github/workflows/git-history-secret-cleanup.yml`
 - Non-destructive
 - Permissions: `contents: read`
 - Reports only FOUND / NOT_FOUND / REDACTED
+- Includes current-tree presence-only credential pattern scan
 
 ### Mode: `rewrite`
 
@@ -69,17 +70,18 @@ Runs only when **all** of the following are true:
 1. `mode` = `rewrite`
 2. `confirmation` = exactly `REMOVE-HISTORICAL-SECRETS`
 3. Repository identity = `yusi20006-max/YasinRelay`
-4. (Optional) `expected_sha` matches current HEAD if provided
+4. `expected_sha` is non-empty and equals current HEAD SHA
 
 Then it will:
 
 1. Create and push a safety backup tag: `backup/pre-secret-cleanup-YYYYMMDD-HHMMSS`
-2. Run `git filter-repo --path .env --invert-paths`
+2. Run quiet `git filter-repo --path .env --invert-paths`
 3. Verify `.env` is gone from the working tree and from history
 4. Verify `.gitignore` still protects `.env`
 5. Presence-only re-scan for `EITAA_TOKEN`
-6. If residual found → fail with `POTENTIAL_REMAINING_CREDENTIAL: REDACTED`
-7. Push cleaned history to branch **`security/history-cleaned`** only
+6. Presence-only current-tree credential pattern scan
+7. If residual found → fail with `POTENTIAL_REMAINING_CREDENTIAL: REDACTED`
+8. Push cleaned history to branch **`security/history-cleaned`** using `--force-with-lease` only
 
 **This workflow never force-pushes `main`.**
 
@@ -91,19 +93,20 @@ Then it will:
 2. Run workflow
 3. `mode` = `detect`
 4. Leave confirmation empty
-5. Review logs (FOUND / NOT_FOUND / REDACTED only)
+5. `expected_sha` may be left empty in detect mode
+6. Review logs (FOUND / NOT_FOUND / REDACTED only)
 
 ---
 
 ## 5. How to run the controlled rewrite (after this PR is merged)
 
 1. Ensure collaborators are notified that history will change.
-2. Optionally note the current main SHA.
+2. Note the current main SHA (required).
 3. Actions → **Git History Secret Cleanup (Controlled)** → Run workflow
 4. Set:
    - `mode` = `rewrite`
    - `confirmation` = `REMOVE-HISTORICAL-SECRETS`
-   - `expected_sha` = current main SHA (recommended)
+   - `expected_sha` = current main SHA (**required**)
 5. Wait for success.
 6. Confirm:
    - Backup tag exists
@@ -129,6 +132,8 @@ Before any rewrite the workflow creates:
 backup/pre-secret-cleanup-YYYYMMDD-HHMMSS
 ```
 
+The tag message includes the pre-rewrite SHA.
+
 Additionally, maintainers should keep an offline mirror:
 
 ```bash
@@ -141,6 +146,7 @@ git clone --mirror https://github.com/yusi20006-max/YasinRelay.git YasinRelay-ba
 
 - [ ] `git log --all --full-history -- .env` returns nothing
 - [ ] Presence-only scan for `EITAA_TOKEN` returns NOT_FOUND
+- [ ] Current-tree credential pattern scan returns NOT_FOUND
 - [ ] `git ls-files .env` shows not tracked
 - [ ] `.gitignore` still lists `.env` and `.env.*`
 - [ ] `.env.example` (if present) contains only placeholders
@@ -178,7 +184,7 @@ This workflow and document contain **no application or fetcher changes**.
 
 Only repository maintainers should:
 
-1. Run mode=rewrite with the confirmation string
+1. Run mode=rewrite with the confirmation string and correct `expected_sha`
 2. Force-push cleaned history to main
 3. Notify collaborators
 
