@@ -4,4 +4,6 @@ logs/
 *.db
 fetcher/openfeed-fetch
 .env
+.env.*
+!.env.example
 .pytest_cache/
