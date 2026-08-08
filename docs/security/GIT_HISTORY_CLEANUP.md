@@ -40,6 +40,7 @@ File: `.github/workflows/git-history-secret-cleanup.yml`
 - Default mode: `detect` (non-destructive)
 - Permissions: `contents: read` only
 - Never prints secret values (only `FOUND` / `NOT_FOUND` / `REDACTED`)
+- Historical scan uses presence-only methods (`git log -S` / `-G` and discarded `git grep`) so matching content never appears in logs
 - Does not rewrite history, does not force-push, does not touch `main`
 
 ### How to run detection
@@ -79,28 +80,41 @@ git push origin backup/pre-secret-cleanup-YYYYMMDD
 
 Keep the mirror somewhere safe offline as well.
 
-### 4.3 Recommended local rewrite (example)
+### 4.3 Recommended local rewrite
 
 > Perform this on a **temporary clone**, never on your only copy of the repository.
+
+**Primary strategy (sufficient for the known leak):**  
+The revoked token lived in the tracked file `.env`. Removing that path from every historical commit is therefore the correct and complete first action.
 
 ```bash
 git clone https://github.com/yusi20006-max/YasinRelay.git YasinRelay-cleanup
 cd YasinRelay-cleanup
 
-# Install tool
 pip install git-filter-repo
 
-# Remove .env from every commit
+# Primary action — remove .env from all history
 git filter-repo --path .env --invert-paths
+```
 
-# Optionally replace known token strings with a placeholder
-# (use a file; do not put the real token on the command line in shared logs)
-# printf 'OLD_TOKEN_PLACEHOLDER==>REDACTED\n' > /tmp/replacements.txt
+**Residual value scrubbing (only if still needed):**  
+If, after path removal, detection still finds the raw token *value* inside other files, scrub those values with a **local, uncommitted** replacements file. The real value must come from a secure source and must **never** be written into the repository, the workflow YAML, documentation, or CI logs.
+
+```bash
+# Illustrative only — do not hard-code real secrets
+# printf '%s\n' "<VALUE_FROM_SECURE_SOURCE>==>REDACTED" > /tmp/replacements.txt
 # git filter-repo --replace-text /tmp/replacements.txt
+# shred -u /tmp/replacements.txt
+```
 
-# Verify
-git log --all --full-history -- .env   # should show nothing
-git grep -I EITAA_TOKEN $(git rev-list --all) || echo "clean"
+> Do **not** replace only the key name `EITAA_TOKEN`. That leaves the actual token value intact and is insufficient.
+
+**Verify:**
+
+```bash
+git log --all --full-history -- .env          # should show nothing
+# Presence-only check (do not print matching lines):
+git log --all --pretty=format:'%H' -S'EITAA_TOKEN' | head -1 || echo "clean"
 ```
 
 ### 4.4 Coordinate the force-push
@@ -133,7 +147,7 @@ Communicate this clearly before the force-push.
 ## 5. Verification checklist (after future rewrite)
 
 - [ ] `git log --all --full-history -- .env` returns no commits
-- [ ] `git grep -I EITAA_TOKEN $(git rev-list --all)` returns nothing
+- [ ] Presence-only scan for `EITAA_TOKEN` returns no commits
 - [ ] `.env` is listed in `.gitignore`
 - [ ] `.env.example` (if present) contains only placeholders
 - [ ] Detection workflow run reports `NOT_FOUND` for historical secrets
