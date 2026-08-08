@@ -1,184 +1,191 @@
 # Git History Secret Cleanup Guide — YasinRelay
 
-**Status:** Preparation only (detection workflow).  
+**Status:** Controlled rewrite workflow prepared (not yet executed).  
 **Date:** 2026-08-08  
-**Scope:** Security / history hygiene. Does **not** change application code or the fetcher.
+**Scope:** Security / history hygiene only. No application or fetcher changes.
 
 ---
 
-## 1. Why this is necessary
+## 1. Why cleanup is necessary
 
-A file named `.env` containing an Eitaa API token was previously committed to this repository.
+A file named `.env` containing an Eitaa API token was previously committed.
 
 - The exposed token has already been **revoked / rotated**.
-- The remaining risk is historical: anyone with access to the Git history can still see the old value.
-- Therefore a controlled history rewrite is planned for a later, deliberate step.
+- Residual risk is historical: anyone with the Git history can still recover the old value.
+- Detection (workflow run on 2026-08-08) confirmed:
 
-This document and the accompanying GitHub Actions workflow prepare that future step safely.
+| Check | Result |
+|-------|--------|
+| Tracked `.env` (HEAD) | **FOUND** |
+| Historical `.env` paths | **FOUND** (count=3) |
+| Historical `EITAA_TOKEN` string | **FOUND** → REDACTED |
+| `.gitignore` protects `.env` / `.env.*` | **FOUND** |
+| Main SHA at detection | `4c04e43c0945dc722c4e1c8431c22fdf6b824c79` |
 
-> **Important:** Do **not** run any history rewrite until the detection workflow has been reviewed and a backup strategy is in place.
-
----
-
-## 2. What has already been done
-
-| Item | Status |
-|------|--------|
-| Token revoked / rotated | Done |
-| `.env` present in current tree | Yes (still tracked) |
-| `.gitignore` contains `.env` | Yes |
-| Detection workflow added | This PR |
-| Actual history rewrite | **Not yet** |
+No secret values were printed during detection.
 
 ---
 
-## 3. Detection workflow (this PR)
+## 2. Primary cleanup strategy
+
+The known secret lived in the tracked file `.env`.
+
+Therefore the **primary and correct** rewrite action is:
+
+```bash
+git filter-repo --path .env --invert-paths --quiet
+```
+
+This removes the path `.env` from every historical commit.
+
+Do **not** use a key-name replacement such as `EITAA_TOKEN==>REDACTED`.
+That leaves the actual token value intact and is insufficient.
+
+After path removal, presence-only scans for `EITAA_TOKEN` and broader credential-like patterns are required.
+If anything remains, the workflow stops with:
+
+```text
+POTENTIAL_REMAINING_CREDENTIAL: REDACTED
+```
+
+and requires a separate deliberate cleanup step. No guessed replacement is applied.
+
+---
+
+## 3. Workflow behaviour
 
 File: `.github/workflows/git-history-secret-cleanup.yml`
 
-- Trigger: **manual only** (`workflow_dispatch`)
-- Default mode: `detect` (non-destructive)
-- Permissions: `contents: read` only
-- Never prints secret values (only `FOUND` / `NOT_FOUND` / `REDACTED`)
-- Historical scan uses presence-only methods (`git log -S` / `-G` and discarded `git grep`) so matching content never appears in logs
-- Does not rewrite history, does not force-push, does not touch `main`
+### Mode: `detect` (default)
 
-### How to run detection
+- Non-destructive
+- Permissions: `contents: read`
+- Reports only FOUND / NOT_FOUND / REDACTED
+- Includes current-tree presence-only credential pattern scan
 
-1. Go to the repository → **Actions**
-2. Select **Git History Secret Cleanup (Controlled)**
-3. Click **Run workflow**
-4. Leave `mode` = `detect`
-5. Leave `confirmation` empty
-6. Run and inspect the summary logs
+### Mode: `rewrite`
+
+Runs only when **all** of the following are true:
+
+1. `mode` = `rewrite`
+2. `confirmation` = exactly `REMOVE-HISTORICAL-SECRETS`
+3. Repository identity = `yusi20006-max/YasinRelay`
+4. `expected_sha` is non-empty and equals current HEAD SHA
+
+Then it will:
+
+1. Create and push a safety backup tag: `backup/pre-secret-cleanup-YYYYMMDD-HHMMSS`
+2. Run quiet `git filter-repo --path .env --invert-paths`
+3. Verify `.env` is gone from the working tree and from history
+4. Verify `.gitignore` still protects `.env`
+5. Presence-only re-scan for `EITAA_TOKEN`
+6. Presence-only current-tree credential pattern scan
+7. If residual found → fail with `POTENTIAL_REMAINING_CREDENTIAL: REDACTED`
+8. Push cleaned history to branch **`security/history-cleaned`** using `--force-with-lease` only
+
+**This workflow never force-pushes `main`.**
 
 ---
 
-## 4. Future rewrite procedure (NOT enabled yet)
+## 4. How to run detection (safe)
 
-When you are ready to remove secrets from history, follow this sequence carefully.
+1. Actions → **Git History Secret Cleanup (Controlled)**
+2. Run workflow
+3. `mode` = `detect`
+4. Leave confirmation empty
+5. `expected_sha` may be left empty in detect mode
+6. Review logs (FOUND / NOT_FOUND / REDACTED only)
 
-### 4.1 Prerequisites
+---
 
-1. Detection workflow reports the expected findings.
-2. A full backup exists (see below).
-3. All collaborators are notified that history will change.
-4. A follow-up PR deliberately enables the rewrite job (currently hard-disabled with `if: false`).
-5. You have a recovery plan for local clones.
+## 5. How to run the controlled rewrite (after this PR is merged)
 
-### 4.2 Create a safety backup / reference
+1. Ensure collaborators are notified that history will change.
+2. Note the current main SHA (required).
+3. Actions → **Git History Secret Cleanup (Controlled)** → Run workflow
+4. Set:
+   - `mode` = `rewrite`
+   - `confirmation` = `REMOVE-HISTORICAL-SECRETS`
+   - `expected_sha` = current main SHA (**required**)
+5. Wait for success.
+6. Confirm:
+   - Backup tag exists
+   - Branch `security/history-cleaned` exists and looks correct
+7. **Maintainer-only force-push to main** (from a trusted machine):
 
 ```bash
-# On a clean machine with a full clone
+git fetch origin
+git checkout security/history-cleaned
+# Review carefully
+git push --force-with-lease origin security/history-cleaned:main
+```
+
+Prefer `--force-with-lease` over bare `--force`.
+
+---
+
+## 6. Backup / reference procedure
+
+Before any rewrite the workflow creates:
+
+```text
+backup/pre-secret-cleanup-YYYYMMDD-HHMMSS
+```
+
+The tag message includes the pre-rewrite SHA.
+
+Additionally, maintainers should keep an offline mirror:
+
+```bash
 git clone --mirror https://github.com/yusi20006-max/YasinRelay.git YasinRelay-backup.git
-
-# Or create a backup branch/tag on the remote (from a trusted machine)
-git checkout main
-git tag backup/pre-secret-cleanup-$(date +%Y%m%d)
-git push origin backup/pre-secret-cleanup-YYYYMMDD
 ```
 
-Keep the mirror somewhere safe offline as well.
+---
 
-### 4.3 Recommended local rewrite
+## 7. Verification checklist (after rewrite + force-push to main)
 
-> Perform this on a **temporary clone**, never on your only copy of the repository.
+- [ ] `git log --all --full-history -- .env` returns nothing
+- [ ] Presence-only scan for `EITAA_TOKEN` returns NOT_FOUND
+- [ ] Current-tree credential pattern scan returns NOT_FOUND
+- [ ] `git ls-files .env` shows not tracked
+- [ ] `.gitignore` still lists `.env` and `.env.*`
+- [ ] `.env.example` (if present) contains only placeholders
+- [ ] Detection workflow run on new main reports clean results
+- [ ] No real token appears in any file or log
 
-**Primary strategy (sufficient for the known leak):**  
-The revoked token lived in the tracked file `.env`. Removing that path from every historical commit is therefore the correct and complete first action.
+---
 
-```bash
-git clone https://github.com/yusi20006-max/YasinRelay.git YasinRelay-cleanup
-cd YasinRelay-cleanup
+## 8. Impact on existing clones
 
-pip install git-filter-repo
+After main is force-pushed, all existing clones diverge.
 
-# Primary action — remove .env from all history
-git filter-repo --path .env --invert-paths
-```
-
-**Residual value scrubbing (only if still needed):**  
-If, after path removal, detection still finds the raw token *value* inside other files, scrub those values with a **local, uncommitted** replacements file. The real value must come from a secure source and must **never** be written into the repository, the workflow YAML, documentation, or CI logs.
-
-```bash
-# Illustrative only — do not hard-code real secrets
-# printf '%s\n' "<VALUE_FROM_SECURE_SOURCE>==>REDACTED" > /tmp/replacements.txt
-# git filter-repo --replace-text /tmp/replacements.txt
-# shred -u /tmp/replacements.txt
-```
-
-> Do **not** replace only the key name `EITAA_TOKEN`. That leaves the actual token value intact and is insufficient.
-
-**Verify:**
-
-```bash
-git log --all --full-history -- .env          # should show nothing
-# Presence-only check (do not print matching lines):
-git log --all --pretty=format:'%H' -S'EITAA_TOKEN' | head -1 || echo "clean"
-```
-
-### 4.4 Coordinate the force-push
-
-Only after verification:
-
-```bash
-# WARNING: This rewrites public history
-git push origin --force --all
-git push origin --force --tags
-```
-
-Prefer force-pushing a temporary branch first and opening a PR for final review, rather than pushing directly to `main`.
-
-### 4.5 After the rewrite — existing clones
-
-All existing clones will have diverged history. Collaborators should:
+Collaborators must either re-clone or:
 
 ```bash
 git fetch origin
 git checkout main
-git reset --hard origin/main   # destructive to local uncommitted work
-# or simply re-clone the repository
+git reset --hard origin/main
 ```
 
-Communicate this clearly before the force-push.
+Communicate this clearly **before** the force-push.
 
 ---
 
-## 5. Verification checklist (after future rewrite)
+## 9. Related work (out of scope)
 
-- [ ] `git log --all --full-history -- .env` returns no commits
-- [ ] Presence-only scan for `EITAA_TOKEN` returns no commits
-- [ ] `.env` is listed in `.gitignore`
-- [ ] `.env.example` (if present) contains only placeholders
-- [ ] Detection workflow run reports `NOT_FOUND` for historical secrets
-- [ ] No real token appears in any remaining file or log
+- Fetcher / Go binary / test failures → **YasinRelay #35**
+- Application logic changes → separate issues
+
+This workflow and document contain **no application or fetcher changes**.
 
 ---
 
-## 6. .gitignore guidance
+## 10. Ownership
 
-Recommended entries (already partially present):
+Only repository maintainers should:
 
-```
-.env
-.env.*
-!.env.example
-```
+1. Run mode=rewrite with the confirmation string and correct `expected_sha`
+2. Force-push cleaned history to main
+3. Notify collaborators
 
-Do not commit real secrets. Use `.env.example` for documentation of required variables.
-
----
-
-## 7. Related work (out of scope)
-
-- Fetcher / Go binary stabilization → **YasinRelay #35**
-- Application logic, tests, pipeline fixes → separate issues
-
-This document and workflow intentionally contain **no application code changes**.
-
----
-
-## 8. Contact / ownership
-
-Only repository maintainers should enable or run the destructive phase.
-Always prefer a second human review before any force-push of rewritten history.
+Always prefer a second human review before force-pushing rewritten history.
