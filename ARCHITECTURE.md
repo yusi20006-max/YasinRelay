@@ -159,3 +159,47 @@ To satisfy production-grade validation and full backward-compatibility, YasinRel
 
 ### 3. Agent Communication Subsystem
 - **`AgentCommunicator`**: Manages state synchronizations, executes remote instructions, and handles network-safe agent message exchanges.
+
+---
+
+## Plugin Architecture & Extension System (Phase 4)
+
+YasinRelay Core v2 features a fully modular and dynamic **Plugin Architecture**. This allows extending the core pipeline with custom components (Feeds, AI Processors, Media Processors, and Destination Publishers) as well as complex, independent plugin modules without changing any code in the pipeline stages.
+
+### Plugin Manager Structure
+
+```
++--------------------------------------------------------+
+|                      PluginManager                     |
++--------------------------------------------------------+
+       |                                           |
+       v (Discover & Load)                         v (Lifecycle Management)
++-------------------------------+           +-------------------------------+
+|     plugin_paths Directory    |           | - initialize(bus, registry)   |
+|   (Dynamic Python Importing)  |           | - enable_plugin(plugin_id)    |
+| - plugins/*.py                |           | - disable_plugin(plugin_id)   |
+| - yasinrelay/plugins/*.py     |           | - shutdown()                  |
++-------------------------------+           +-------------------------------+
+                                                   |
+                                                   v
+                                        +-----------------------+
+                                        |  integration_registry |
+                                        +-----------------------+
+                                                   |
+                                                   v (Resolve)
+                                        +-----------------------+
+                                        |    Pipeline Engine    |
+                                        +-----------------------+
+```
+
+### Core Abstractions
+- **`BasePlugin`**: Base class representing the lifecycle properties (`plugin_id`, `name`, `version`, `description`, `enabled`, and `settings`).
+- **`SourcePlugin`**: Inherits from `BasePlugin` and `FetchEngine`. Used to implement new feed fetching components.
+- **`AIPlugin`**: Inherits from `BasePlugin` and `ContentProcessor`. Used to implement custom AI processing pipelines.
+- **`MediaPlugin`**: Inherits from `BasePlugin` and `MediaProcessor`. Used to implement custom media and image editing pipelines.
+- **`PublisherPlugin`**: Inherits from `BasePlugin`. Used to implement publishing tools to external platforms.
+
+### Key Architectural Benefits
+1. **Zero Core Modifications**: New components are automatically registered inside the global `integration_registry` and resolved dynamically in `build_pipeline` inside `yasinrelay/cli.py` based on `AI_PROVIDER` or registry lookup.
+2. **Error Isolation & Pipeline Robustness**: All discovery, load, initialization, and handler operations are isolated via comprehensive `try/except` blocks. In the event of a plugin failure, the event bus publishes a structured `ProcessingFailed` event but prevents the core pipeline from halting.
+3. **Pluggable Event Interactions**: Plugins have full access to the `EventBus`, allowing them to subscribe to pipeline lifecycle events (e.g. `ContentReceived`, `PublishingCompleted`) or emit custom events dynamically.

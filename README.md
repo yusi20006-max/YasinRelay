@@ -402,3 +402,56 @@ class AnalyticsPlugin(IntegrationPlugin):
 
 ## یادداشت‌های انتشار (Release Notes)
 جزئیات کامل مربوط به نسخه پایدار **v2.0.0** از جمله قابلیت‌های جدید، امنیت، یکپارچه‌سازی با Yasin-Core و نتایج ممیزی امنیت در فایل [RELEASE_NOTES.md](RELEASE_NOTES.md) مستند شده است.
+
+---
+
+## معماری پلاگین‌ها و سیستم گسترش‌پذیری (Plugin Architecture & Extension System)
+
+در نسخه ۲ فاز ۴، پروژه YasinRelay به یک پلتفرم پلاگین تمام عیار مجهز شده است که به توسعه‌دهندگان اجازه می‌دهد بدون دستکاری در کدهای هسته سیستم، قابلیت‌های جدیدی را به برنامه اضافه کنند.
+
+### ۱. انواع اینترفیس‌های پلاگین (Plugin Interfaces)
+افزونه‌ها می‌توانند یکی از اینترفیس‌های استاندارد زیر را پیاده‌سازی کنند:
+- **`SourcePlugin`**: جهت دریافت فید و اطلاعات از منابع جدید (سازگار با `FetchEngine`)
+- **`AIPlugin`**: جهت ویرایش، تحلیل و خلاصه سازی پیام‌ها (سازگار با `ContentProcessor`)
+- **`MediaPlugin`**: برای پیش‌پردازش رسانه‌ها و تصاویر (سازگار با `MediaProcessor`)
+- **`PublisherPlugin`**: برای ارسال و انتشار مطالب در پلتفرم‌های خارجی و جدید
+
+### ۲. نحوه ساخت یک پلاگین جدید (Creating a Plugin)
+برای ساخت پلاگین، کافیست کلاسی بنویسید که از یکی از اینترفیس‌ها ارث‌بری داشته باشد و آن را در پوشه `plugins/` در ریشه پروژه قرار دهید:
+
+```python
+# plugins/my_ai_plugin.py
+from yasinrelay.plugins import AIPlugin
+from yasinrelay.fetch_engine import Post
+from yasinrelay.ai_processor import ProcessedContent
+
+class AdvancedAIPlugin(AIPlugin):
+    @property
+    def plugin_id(self) -> str:
+        return "my_advanced_ai"
+
+    @property
+    def name(self) -> str:
+        return "Advanced Custom AI Plugin"
+
+    def process(self, post: Post) -> ProcessedContent:
+        # پردازش سفارشی شما
+        return ProcessedContent(source_post=post, text=f"[تزیین‌شده توسط AI] {post.text}")
+```
+
+### ۳. مدیریت چرخه حیات (Plugin Lifecycle)
+پلاگین‌ها دارای چرخه حیات کامل هستند و متدهای `initialize` و `shutdown` آن‌ها به صورت پویا صدا زده می‌شوند:
+```python
+    def initialize(self, event_bus, registry):
+        # عضویت در رویدادها
+        event_bus.subscribe("ContentReceived", self.log_receive)
+
+    def shutdown(self):
+        # آزادسازی منابع
+        pass
+```
+
+### ۴. پیکربندی و متغیرهای جدید سیستم پلاگین‌ها
+- `ENABLED_PLUGINS`: لیست شناسه‌های پلاگین‌های فعال (جداشده با کاما، مثلاً `ENABLED_PLUGINS=my_advanced_ai,another_plugin`)
+- `PLUGIN_PATHS`: مسیرهای جستجوی پلاگین‌ها (پیش‌فرض: `plugins,yasinrelay/plugins`)
+- `PLUGIN_SETTINGS_JSON`: تنظیمات اختصاصی هر پلاگین با فرمت استاندارد JSON (مثلاً `{"my_advanced_ai": {"api_key": "123"}}`)

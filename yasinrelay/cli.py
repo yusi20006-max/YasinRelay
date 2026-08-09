@@ -25,6 +25,7 @@ from .eitaa_publisher import EitaaPublisher
 from .fetch_engine import FetchEngine, SubprocessFetcher
 from .pipeline import ChannelRunReport, Pipeline
 from .storage.database import Database
+from .integration import integration_registry
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +36,34 @@ def build_pipeline(
     database: Optional[Database] = None,
 ) -> Pipeline:
     config = load_config()
-    fetch_engine = fetch_engine or SubprocessFetcher()
-    processor = processor or PassthroughProcessor(
-        api_key=config.ai_api_key,
-        base_url=config.ai_base_url,
-        model=config.ai_model,
+
+    # فعال‌سازی دیباگ و راه‌اندازی فرآیند لود افزونه‌ها
+    from .plugins.manager import PluginManager
+    plugin_mgr = PluginManager(
+        plugin_paths=config.plugin_paths,
+        enabled_plugins=config.enabled_plugins,
+        plugin_settings=config.plugin_settings,
     )
+    plugin_mgr.load_and_initialize_plugins()
+
+    fetch_engine = fetch_engine or SubprocessFetcher()
+
+    if processor is None:
+        # جستجو در رجیستری پلاگین‌ها برای ارائه‌دهنده هوش مصنوعی سفارشی
+        ai_provider_cls = integration_registry.get_ai_provider(config.ai_provider)
+        if ai_provider_cls:
+            logger.info(f"در حال استفاده از ارائه‌دهنده هوش مصنوعی بارگذاری‌شده از پلاگین: {config.ai_provider}")
+            try:
+                processor = ai_provider_cls(settings=config.plugin_settings.get(config.ai_provider, {}))
+            except Exception:
+                processor = ai_provider_cls()
+        else:
+            processor = PassthroughProcessor(
+                api_key=config.ai_api_key,
+                base_url=config.ai_base_url,
+                model=config.ai_model,
+            )
+
     publisher = EitaaPublisher(config.eitaa, config.inter_message_delay_seconds)
 
     # راه‌اندازی دیتابیس در صورت عدم ارسال مقدار مستقیم
