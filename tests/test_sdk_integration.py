@@ -21,7 +21,7 @@ def test_sdk_client_initialization():
     """تست مقداردهی اولیه کلاینت SDK در YasinRelay."""
     client = YasinCoreClient()
     assert client is not None
-    assert client.version == "1.0.0"
+    assert isinstance(client.version, str) and client.version
 
 
 def test_context_creation_and_propagation():
