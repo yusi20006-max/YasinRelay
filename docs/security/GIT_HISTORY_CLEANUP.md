@@ -1,6 +1,6 @@
 # Git History Secret Cleanup Guide — YasinRelay
 
-**Status:** Controlled rewrite workflow prepared (not yet executed).  
+**Status:** Controlled rewrite workflow already executed.
 **Date:** 2026-08-08  
 **Scope:** Security / history hygiene only. No application or fetcher changes.
 
@@ -82,16 +82,21 @@ Then:
 
 ---
 
-## 5. How to run controlled rewrite (after merge + clean detect)
+## 5. How to run controlled rewrite (already executed)
 
-1. Notify collaborators
-2. Note current main SHA
-3. Run workflow with:
-   - `mode` = `rewrite`
-   - `confirmation` = `REMOVE-HISTORICAL-SECRETS`
-   - `expected_sha` = current main SHA
-4. Review backup tag + `security/history-cleaned`
-5. Maintainer force-push from trusted machine:
+The controlled rewrite workflow has already been successfully executed.
+
+During the execution:
+- Repository collaborators were notified.
+- The workflow ran with `mode` = `rewrite`, `confirmation` = `REMOVE-HISTORICAL-SECRETS`.
+- Safety backup tags were created:
+  - `backup/pre-secret-cleanup-20260808-123802`
+  - `backup/pre-secret-cleanup-20260808-155915`
+- The quiet `git filter-repo --path .env --invert-paths` was completed.
+- Verification was done ensuring `.env` is fully removed from tree and history, and `.gitignore` still protects it.
+- The clean branch `security/history-cleaned` is available with HEAD SHA `4d9c3f69a0c1da27adb023d2362a2f6ff83b1fcd`.
+
+The final migration step to force-push the cleaned branch to `main` remains to be executed by the Maintainer using `--force-with-lease` from a trusted machine:
 
 ```bash
 git fetch origin
