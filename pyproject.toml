@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yasin-relay"
+dynamic = ["version"]
+description = "YasinRelay: feed ingestion, AI rewriting, and channel-publishing pipeline for the Yasin AI Ecosystem"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "yasinrelay.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["yasinrelay*", "yasin_relay*"]
