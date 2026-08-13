@@ -18,6 +18,7 @@ from .eitaa_publisher import EitaaPublisher
 from .fetch_engine import FetchEngine, FetchError, Post
 from .media_processor import MediaProcessor, PassthroughMediaProcessor
 from .pipeline_engine import (
+    AgeFilterStage,
     AIProcessorStage,
     CollectorStage,
     DuplicateDetectionStage,
@@ -66,6 +67,7 @@ class Pipeline:
             NormalizerStage(event_bus=self._event_bus),
             ValidatorStage(event_bus=self._event_bus),
             DuplicateDetectionStage(self._db, event_bus=self._event_bus),
+            AgeFilterStage(max_age_hours=6.0, event_bus=self._event_bus),
             AIProcessorStage(self._processor, event_bus=self._event_bus),
             MediaProcessorStage(self._media_processor, event_bus=self._event_bus),
             PublisherStage(self._publisher, self._db, event_bus=self._event_bus),

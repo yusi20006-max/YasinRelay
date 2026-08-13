@@ -21,6 +21,7 @@ import json
 import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -33,6 +34,7 @@ class Post:
     message_id: str
     text: str
     media_url: Optional[str] = None
+    published_at: Optional[datetime] = None
     raw: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -86,16 +88,26 @@ class SubprocessFetcher(FetchEngine):
         except json.JSONDecodeError as exc:
             raise FetchError(f"خروجی fetcher برای '{channel}' JSON معتبر نبود") from exc
 
-        return [
-            Post(
-                channel=channel,
-                message_id=str(item.get("message_id", "")),
-                text=item.get("text", ""),
-                media_url=item.get("media_url"),
-                raw=item,
+        posts = []
+        for item in items:
+            published_at = None
+            raw_time = item.get("time")
+            if raw_time:
+                try:
+                    published_at = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    published_at = None
+            posts.append(
+                Post(
+                    channel=channel,
+                    message_id=str(item.get("message_id", "")),
+                    text=item.get("text", ""),
+                    media_url=item.get("media_url"),
+                    published_at=published_at,
+                    raw=item,
+                )
             )
-            for item in items
-        ]
+        return posts
 
 
 class FakeFetcher(FetchEngine):
