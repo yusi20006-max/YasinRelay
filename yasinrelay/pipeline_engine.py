@@ -10,7 +10,7 @@ import hashlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .ai_processor import ContentProcessor, ProcessedContent
@@ -207,6 +207,36 @@ class DuplicateDetectionStage(PipelineStage):
                     created_at=datetime.now(),
                 )
                 self.db.save_post(db_post)
+        return context
+
+
+class AgeFilterStage(PipelineStage):
+    """رد کردن پست‌هایی که قدیمی‌تر از حد مجاز هستند (پیش‌فرض ۶ ساعت)."""
+
+    def __init__(self, max_age_hours: float = 6.0, event_bus: Optional[EventBus] = None) -> None:
+        self.max_age_hours = max_age_hours
+        self.event_bus = event_bus or get_event_bus()
+
+    def process(self, context: PipelineContext) -> PipelineContext:
+        if not context.is_valid or context.is_duplicate:
+            return context
+
+        published_at = context.post.published_at
+        if published_at is None:
+            # اگر زمان انتشار مشخص نبود، فیلتر را رد نمی‌کنیم (برای جلوگیری از حذف اشتباه)
+            return context
+
+        if published_at.tzinfo is None:
+            published_at = published_at.replace(tzinfo=timezone.utc)
+
+        age_hours = (datetime.now(timezone.utc) - published_at).total_seconds() / 3600
+        if age_hours > self.max_age_hours:
+            context.is_valid = False
+            context.errors.append(f"پست قدیمی‌تر از {self.max_age_hours} ساعت است (سن: {age_hours:.1f} ساعت)")
+            logger.info(
+                f"[AgeFilter] پست رد شد (خیلی قدیمی): {context.post.channel} | "
+                f"شناسه: {context.post.message_id} | سن: {age_hours:.1f} ساعت"
+            )
         return context
 
 
