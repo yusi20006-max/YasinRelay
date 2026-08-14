@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"fetcher/api"
 )
@@ -19,8 +20,14 @@ func main() {
 
 	http.HandleFunc("/api/image", api.Image)
 
-	log.Println("OpenFeed started on :8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Println("OpenFeed started on " + addr)
+
+	log.Fatal(http.ListenAndServe(addr, nil))
 
 }
