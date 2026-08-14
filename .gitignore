@@ -7,3 +7,4 @@ fetcher/openfeed-fetch
 .env.*
 !.env.example
 .pytest_cache/
+fetcher/openfeed-server
