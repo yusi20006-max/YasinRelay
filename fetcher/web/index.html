@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+
+<meta charset="utf-8">
+
+<meta name="viewport"
+content="width=device-width,initial-scale=1,viewport-fit=cover">
+
+<meta name="theme-color" content="#0e1621">
+
+<link rel="manifest" href="manifest.json">
+
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<link rel="stylesheet" href="style.css">
+
+<title>OpenFeed</title>
+
+</head>
+
+<body>
+
+<header>
+
+<h2>OpenFeed</h2>
+
+<div id="status" class="status status-checking">
+<span class="dot"></span>
+<span id="statusText">در حال بررسی اتصال…</span>
+</div>
+
+</header>
+
+<div class="search">
+
+<input id="channel" placeholder="نام کانال (مثلاً durov)" autocomplete="off">
+
+<button onclick="openFromInput()">باز کن</button>
+
+</div>
+
+<div id="savedWrap">
+<div id="savedList" class="saved-list"></div>
+</div>
+
+<div id="pullHint" class="pull-hint">رها کنید برای بروزرسانی</div>
+
+<div id="feed">
+<div class="empty">یک کانال را برای شروع باز کنید</div>
+</div>
+
+<script src="app.js"></script>
+
+</body>
+
+</html>
