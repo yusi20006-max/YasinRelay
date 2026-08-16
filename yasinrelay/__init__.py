@@ -3,6 +3,8 @@ yasinrelay
 پروژه‌ای که محتوا را از کانال‌های تلگرام دریافت می‌کند (با همان مکانیزم
 OpenFeed: دور زدن فیلترینگ از طریق translate.goog domain fronting)، با
 AI پردازش می‌کند، و در ایتا منتشر می‌کند.
+
+AI processing prefers Yasin-AI public contracts (see yasinai_adapter).
 """
 
 from .ai_processor import CallableProcessor, ContentProcessor, PassthroughProcessor, ProcessedContent
@@ -41,12 +43,16 @@ from .router import (
     EVENT_DELIVERY_COMPLETED,
     EVENT_DELIVERY_FAILED,
 )
+from .yasinai_adapter import YasinAIContentProcessor, build_content_processor, is_yasinai_available
 
 __all__ = [
     "CallableProcessor",
     "ContentProcessor",
     "PassthroughProcessor",
     "ProcessedContent",
+    "YasinAIContentProcessor",
+    "build_content_processor",
+    "is_yasinai_available",
     "EitaaConfig",
     "RelayConfig",
     "load_config",
