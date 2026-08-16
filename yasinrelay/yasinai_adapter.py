@@ -183,7 +183,7 @@ class YasinAIContentProcessor(AIProcessor):
             if getattr(result, "success", False) and (result.text or "").strip():
                 return result.text.strip()
         except Exception as exc:
-            logger.error("Yasin-AI helper generation failed: %s", exp if False else exc)
+            logger.error("Yasin-AI helper generation failed: %s", exc)
         return text
 
 
