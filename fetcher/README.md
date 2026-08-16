@@ -1,33 +1,36 @@
 # fetcher/
 
-اینجا محل قرارگیری کد Go وندورشده از [[openfeed]] است (پکیج‌های
-`internal/provider` و `internal/telemirror`)، که فچ محتوای تلگرام را
-از طریق زنجیره‌ی failover زیر انجام می‌دهد:
+Vendored OpenFeed-based Telegram fetch path (TeleMirror → Google → GoogleTranslate → Direct).
+
+## Build
+
+From repository root:
+
+```bash
+./scripts/build-fetcher.sh
+# or:
+cd fetcher && go build -o openfeed-fetch .
+```
+
+Requires **Go 1.25+**. The binary `fetcher/openfeed-fetch` is gitignored; CI builds it before the test suite (see `.github/workflows/fetcher-e2e.yml`).
+
+## CLI contract
 
 ```
-TeleMirror -> Google -> GoogleTranslate -> Direct
+openfeed-fetch fetch --channel <channel> --limit <n>
 ```
 
-## کاری که باید انجام شود
+Stdout JSON:
 
-1. کد مربوطه از ریپازیتوری OpenFeed را اینجا کپی/وندور کنید.
-2. یک CLI کوچک روی آن بسازید که این رابط را پیاده کند:
+```json
+[
+  {"message_id": "123", "text": "...", "media_url": "https://..."},
+  ...
+]
+```
 
-   ```
-   openfeed-fetch fetch --channel <channel> --limit <n>
-   ```
+## Local development without Go
 
-   و روی stdout خروجی JSON زیر را چاپ کند:
-
-   ```json
-   [
-     {"message_id": "123", "text": "...", "media_url": "https://..."},
-     ...
-   ]
-   ```
-
-3. باینری کامپایل‌شده را با نام `openfeed-fetch` همین‌جا (یا در مسیری
-   که به `SubprocessFetcher(binary_path=...)` می‌دهید) قرار دهید.
-
-تا زمانی که این بخش تکمیل نشده، `yasinrelay.fetch_engine.FakeFetcher`
-برای تست/توسعه‌ی بقیه‌ی pipeline کافی است.
+- Unit / pipeline tests can use `FakeFetcher`.
+- E2E tests mock `subprocess.run` and auto-create a throwaway stub binary when the real binary is absent.
+- Production and full integration require a real `go build`.

@@ -59,21 +59,46 @@ def event_bus():
 
 @pytest.fixture
 def mock_subprocess_run():
-    """فیوچر موک برای subprocess.run جهت شبیه‌سازی باینری Go فچر و دانلودر."""
-    with patch("subprocess.run") as mock_run:
-        def side_effect(cmd, *args, **kwargs):
-            # اگر برای دریافت پست فراخوانی شده است
-            if len(cmd) > 1 and "openfeed-fetch" in cmd[0] and "download" not in cmd:
-                # شبیه‌سازی خروجی پست خام تلگرام به صورت JSON
-                mock_stdout = '[{"message_id": "888", "text": "   محتوای خبر تستی از تلگرام!   ", "media_url": "https://cdn4-telesco-pe.translate.goog/file/photo_888.jpg"}]'
-                return Mock(returncode=0, stdout=mock_stdout, stderr="")
-            # اگر برای دانلود رسانه با استفاده از telemirror فراخوانی شده است
-            elif len(cmd) > 2 and "download" in cmd:
-                return Mock(returncode=0, stdout=b"fake-binary-image-data-from-telemirror", stderr="")
-            return Mock(returncode=0, stdout=b"", stderr="")
+    """فیوچر موک برای subprocess.run جهت شبیه‌سازی باینری Go فچر و دانلودر.
 
-        mock_run.side_effect = side_effect
-        yield mock_run
+    SubprocessFetcher refuses to run when the binary path is missing. For E2E
+    unit tests we provision a throwaway executable stub if the real Go binary
+    has not been built yet (CI builds it; local may not). The real process is
+    never executed — subprocess.run is fully mocked.
+    """
+    from pathlib import Path
+
+    binary = Path("./fetcher/openfeed-fetch")
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    created_stub = False
+    if not binary.exists():
+        binary.write_bytes(b"#!/bin/sh\necho stub\n")
+        binary.chmod(0o755)
+        created_stub = True
+
+    try:
+        with patch("subprocess.run") as mock_run:
+            def side_effect(cmd, *args, **kwargs):
+                # اگر برای دریافت پست فراخوانی شده است
+                if len(cmd) > 1 and "openfeed-fetch" in str(cmd[0]) and "download" not in cmd:
+                    mock_stdout = '[{"message_id": "888", "text": "   محتوای خبر تستی از تلگرام!   ", "media_url": "https://cdn4-telesco-pe.translate.goog/file/photo_888.jpg"}]'
+                    return Mock(returncode=0, stdout=mock_stdout, stderr="")
+                # اگر برای دانلود رسانه با استفاده از telemirror فراخوانی شده است
+                elif len(cmd) > 2 and "download" in cmd:
+                    return Mock(returncode=0, stdout=b"fake-binary-image-data-from-telemirror", stderr="")
+                return Mock(returncode=0, stdout=b"", stderr="")
+
+            mock_run.side_effect = side_effect
+            yield mock_run
+    finally:
+        if created_stub and binary.exists():
+            # Remove only the stub we created; keep a real Go build intact.
+            try:
+                data = binary.read_bytes()
+                if data.startswith(b"#!/bin/sh"):
+                    binary.unlink()
+            except OSError:
+                pass
 
 
 @pytest.fixture
@@ -176,7 +201,6 @@ def test_e2e_successful_pipeline_flow(temp_db, event_bus, mock_subprocess_run, m
             f"ترتیب انتشار رویدادها رعایت نشده است: {expected_order[idx]} نباید بعد از {expected_order[idx+1]} باشد."
 
     # ۴. بررسی صحت اطلاعات ارسالی در درخواست انتشار نهایی ایتا (بایت‌های تصویر دانلودشده توسط telemirror)
-    # بررسی فراخوانی requests.post برای ارسال فایل به ایتا
     sendFile_calls = [
         call for call in mock_external_requests.call_args_list
         if "sendFile" in call[0][0]
