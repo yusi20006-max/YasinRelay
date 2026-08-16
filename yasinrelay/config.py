@@ -38,7 +38,9 @@ class RelayConfig:
     database_path: str = "relay.db"
     log_level: str = "INFO"
     schedule_interval: int = 1800  # ۳۰ دقیقه به عنوان مقدار پیش‌فرض
-    ai_provider: str = "passthrough"
+    # yasinai = canonical Yasin-AI public contracts (preferred)
+    # passthrough|legacy = direct HTTP OpenAI-compatible client (pre-#43)
+    ai_provider: str = "yasinai"
     event_bus_enabled: bool = True
     event_logging_enabled: bool = True
 
@@ -61,7 +63,8 @@ def load_config() -> RelayConfig:
     else:
         schedule_interval = fetch_interval
 
-    ai_provider = os.environ.get("AI_PROVIDER", "passthrough")
+    # Prefer canonical Yasin-AI contracts; operators may force legacy via AI_PROVIDER=passthrough
+    ai_provider = os.environ.get("AI_PROVIDER", "yasinai")
 
     # رویدادها و گذرگاه رویداد داخلی
     event_bus_enabled = os.environ.get("EVENT_BUS_ENABLED", "true").lower() in ("true", "1", "yes")

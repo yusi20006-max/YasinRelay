@@ -5,10 +5,9 @@ cli.py
     python -m yasinrelay.cli run
     python -m yasinrelay.cli run --channel @some_channel --limit 5
 
-این ماژول اجزای واقعی (SubprocessFetcher, PassthroughProcessor,
-EitaaPublisher) را وصل می‌کند. برای اتصال یک ContentProcessor واقعی
-(مثلاً فراخوانی Anthropic API برای ترجمه/خلاصه)، تابع `build_pipeline`
-را با یک CallableProcessor دلخواه فراخوانی کنید.
+AI processing defaults to Yasin-AI public contracts when the `yasinai`
+package is available (see AI_PROVIDER). Legacy direct HTTP remains available
+via AI_PROVIDER=passthrough for backward compatibility.
 """
 
 from __future__ import annotations
@@ -19,12 +18,13 @@ import time
 import logging
 from typing import List, Optional
 
-from .ai_processor import ContentProcessor, PassthroughProcessor
+from .ai_processor import ContentProcessor
 from .config import load_config
 from .eitaa_publisher import EitaaPublisher
 from .fetch_engine import FetchEngine, SubprocessFetcher
 from .pipeline import ChannelRunReport, Pipeline
 from .storage.database import Database
+from .yasinai_adapter import build_content_processor
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,8 @@ def build_pipeline(
 ) -> Pipeline:
     config = load_config()
     fetch_engine = fetch_engine or SubprocessFetcher()
-    processor = processor or PassthroughProcessor(
+    processor = processor or build_content_processor(
+        ai_provider=config.ai_provider,
         api_key=config.ai_api_key,
         base_url=config.ai_base_url,
         model=config.ai_model,
