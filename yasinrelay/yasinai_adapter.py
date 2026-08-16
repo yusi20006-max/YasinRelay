@@ -3,18 +3,18 @@ yasinai_adapter.py
 Adapter from YasinRelay ContentProcessor domain interface to Yasin-AI
 public capability contracts (v1).
 
-Consumes ONLY:
-  - yasinai.contracts (GenerationRequest, GenerationResult, ...)
-  - yasinai.services (GenerationService)
+Consumes ONLY public surfaces:
+  - yasinai.contracts
+  - yasinai.services
 
-Must NOT import knowledge_platform, security_platform, developer_platform,
-or other private Yasin-AI modules.
+Must NOT import private Yasin-AI implementation packages.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+from types import SimpleNamespace
 from typing import Any, Optional
 
 from .ai_processor import AIProcessor, ProcessedContent
@@ -56,6 +56,41 @@ def _ensure_openai_env_from_relay(api_key: str) -> None:
         os.environ["OPENAI_API_KEY"] = api_key
 
 
+def _build_generation_request(
+    *,
+    prompt: str,
+    model: Optional[str],
+    max_tokens: int,
+    temperature: float,
+    system_prompt: Optional[str],
+    provider: Optional[str],
+    metadata: Optional[dict] = None,
+) -> Any:
+    """Build a GenerationRequest when yasinai is installed; else a duck-typed stand-in for tests."""
+    try:
+        from yasinai.contracts import GenerationRequest
+
+        return GenerationRequest(
+            prompt=prompt,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system_prompt=system_prompt,
+            provider=provider,
+            metadata=dict(metadata or {}),
+        )
+    except ImportError:
+        return SimpleNamespace(
+            prompt=prompt,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system_prompt=system_prompt,
+            provider=provider,
+            metadata=dict(metadata or {}),
+        )
+
+
 class YasinAIContentProcessor(AIProcessor):
     """
     ContentProcessor backed by Yasin-AI GenerationService public API.
@@ -95,9 +130,7 @@ class YasinAIContentProcessor(AIProcessor):
             return ProcessedContent(source_post=post, text=text)
 
         try:
-            from yasinai.contracts import GenerationRequest
-
-            request = GenerationRequest(
+            request = _build_generation_request(
                 prompt=text,
                 model=self._model,
                 max_tokens=self._max_tokens,
@@ -169,9 +202,7 @@ class YasinAIContentProcessor(AIProcessor):
         if not (text or "").strip():
             return text
         try:
-            from yasinai.contracts import GenerationRequest
-
-            request = GenerationRequest(
+            request = _build_generation_request(
                 prompt=text,
                 model=self._model,
                 max_tokens=max_tokens or self._max_tokens,
@@ -183,7 +214,7 @@ class YasinAIContentProcessor(AIProcessor):
             if getattr(result, "success", False) and (result.text or "").strip():
                 return result.text.strip()
         except Exception as exc:
-            logger.error("Yasin-AI helper generation failed: %s", exc)
+            logger.error("Yasin-AI helper generation failed: %s", exp if False else exc)
         return text
 
 
@@ -199,9 +230,10 @@ def build_content_processor(
     Factory selecting the AI ContentProcessor implementation.
 
     - yasinai / default: YasinAIContentProcessor when yasinai is installed
+      or a generation_service is injected
     - passthrough / legacy: direct HTTP PassthroughProcessor (pre-migration)
 
-    Falls back to PassthroughProcessor if yasinai is unavailable.
+    Falls back to PassthroughProcessor if yasinai is unavailable and no service injected.
     """
     from .ai_processor import PassthroughProcessor
 

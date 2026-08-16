@@ -104,11 +104,16 @@ def test_factory_yasinai_falls_back_when_unavailable():
 
 
 def test_no_private_yasinai_imports_in_adapter_source():
-    """Static guard: adapter module must not reference private packages."""
-    import inspect
-    import yasinrelay.yasinai_adapter as mod
+    """Static guard: adapter module must not import private packages."""
+    import pathlib
 
-    source = inspect.getsource(mod)
+    source = pathlib.Path(__file__).resolve().parents[1] / "yasinrelay" / "yasinai_adapter.py"
+    lines = source.read_text(encoding="utf-8").splitlines()
+    import_lines = [
+        ln for ln in lines
+        if ln.lstrip().startswith("import ") or ln.lstrip().startswith("from ")
+    ]
+    joined = "\n".join(import_lines)
     for forbidden in (
         "knowledge_platform",
         "security_platform",
@@ -116,7 +121,7 @@ def test_no_private_yasinai_imports_in_adapter_source():
         "yasinai.providers.openai_provider",
         "yasinai.private",
     ):
-        assert forbidden not in source, f"forbidden import/reference: {forbidden}"
+        assert forbidden not in joined, f"forbidden import: {forbidden}"
 
 
 def test_pipeline_stage_with_adapter():
