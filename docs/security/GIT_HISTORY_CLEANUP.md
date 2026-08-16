@@ -1,7 +1,7 @@
 # Git History Secret Cleanup Guide — YasinRelay
 
-**Status:** Controlled rewrite workflow already executed.
-**Date:** 2026-08-08  
+**Status:** Controlled rewrite workflow executed; cleaned history on `security/history-cleaned`.  
+**Latest rewrite date:** 2026-08-16  
 **Scope:** Security / history hygiene only. No application or fetcher changes.
 
 ---
@@ -11,8 +11,8 @@
 A file named `.env` containing an Eitaa API token was previously committed.
 
 - The exposed token has already been **revoked / rotated**.
-- Residual risk is historical: anyone with the Git history can still recover the old value.
-- Detection confirmed tracked and historical `.env` presence (values never printed).
+- Residual risk is historical: anyone with the uncleaned Git history can still recover the old value.
+- Detection confirmed historical `.env` path presence on `main` (values never printed in logs/docs).
 
 ---
 
@@ -82,27 +82,37 @@ Then:
 
 ---
 
-## 5. How to run controlled rewrite (already executed)
+## 5. Rewrite execution log
 
-The controlled rewrite workflow has already been successfully executed.
+### 2026-08-08
 
-During the execution:
-- Repository collaborators were notified.
-- The workflow ran with `mode` = `rewrite`, `confirmation` = `REMOVE-HISTORICAL-SECRETS`.
-- Safety backup tags were created:
+- Workflow runs completed with rewrite gates.
+- Backup tags created (examples):
   - `backup/pre-secret-cleanup-20260808-123802`
   - `backup/pre-secret-cleanup-20260808-155915`
-- The quiet `git filter-repo --path .env --invert-paths` was completed.
-- Verification was done ensuring `.env` is fully removed from tree and history, and `.gitignore` still protects it.
-- The clean branch `security/history-cleaned` is available with HEAD SHA `4d9c3f69a0c1da27adb023d2362a2f6ff83b1fcd`.
+- Cleaned tip at that time was documented as `4d9c3f69a0c1da27adb023d2362a2f6ff83b1fcd`.
 
-The final migration step to force-push the cleaned branch to `main` remains to be executed by the Maintainer using `--force-with-lease` from a trusted machine:
+### 2026-08-16 (Issue #34 continuation)
+
+- Re-ran controlled rewrite from then-current `main` HEAD `a4f1d4cedb827c7efb5a1977e2885e64b0f6bdf6` (includes Yasin-AI #43 migration).
+- Workflow run: [31932727003](https://github.com/yusi20006-max/YasinRelay/actions/runs/31932727003) — **success**.
+- Verified:
+  - `git log security/history-cleaned -- .env` → **empty**
+  - `git log origin/main -- .env` → still lists historical path commits (expected until main promotion)
+  - `.gitignore` still ignores `.env` / `.env.*` with `!.env.example`
+  - Tip of cleaned branch: `9f53282873a57053a015c0870aeccfc05414038a` (rewritten equivalent of post-#43 main)
+
+### Maintainer-only final step
+
+Promote cleaned history to `main` **only** from a trusted machine after coordinating with collaborators:
 
 ```bash
 git fetch origin
 git checkout security/history-cleaned
 git push --force-with-lease origin security/history-cleaned:main
 ```
+
+After promotion, collaborators must re-clone or hard-reset local clones.
 
 ---
 
