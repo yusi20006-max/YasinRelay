@@ -26,12 +26,17 @@ python -m pip install --upgrade pip setuptools wheel
 python -m pip install -e .
 python -m pip install "pytest>=7.4,<10"
 
-# If the canonical Yasin-AI checkout exists beside YasinRelay, install that
-# exact checkout into this environment. Otherwise the declared yasinai>=1.1.4
-# dependency is resolved from the package index.
-if [ -d "../Yasin-AI" ] && [ -f "../Yasin-AI/pyproject.toml" ]; then
-  python -m pip install -e ../Yasin-AI
+# Yasin-AI is a sibling canonical platform, not a PyPI dependency.
+# On a fresh Termux installation, bootstrap it automatically beside YasinRelay.
+YASIN_AI_DIR="../Yasin-AI"
+if [ ! -d "${YASIN_AI_DIR}" ]; then
+  git clone --depth 1 https://github.com/yusi20006-max/Yasin-AI.git "${YASIN_AI_DIR}"
 fi
+if [ ! -f "${YASIN_AI_DIR}/pyproject.toml" ]; then
+  echo "ERROR: Yasin-AI checkout is incomplete: ${YASIN_AI_DIR}" >&2
+  exit 1
+fi
+python -m pip install -e "${YASIN_AI_DIR}"
 
 # Create an operator-owned environment file on first install. Never overwrite
 # an existing .env and never invent credentials.
