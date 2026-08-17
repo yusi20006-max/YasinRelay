@@ -7,7 +7,7 @@ SCRIPT = ROOT / "scripts" / "install_termux.sh"
 def test_termux_bootstrap_contract() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     assert "set -euo pipefail" in text
-    assert "pkg install -y python git clang make pkg-config openssl openssl-tool libffi cmake patchelf go" in text
+    assert "pkg install -y python git clang make pkg-config openssl openssl-tool libffi cmake patchelf golang" in text
     assert 'PYTHON_BIN="${PREFIX}/bin/python"' in text
     assert 'GO_BIN="${PREFIX}/bin/go"' in text
     assert '"${PYTHON_BIN}" -m venv .venv' in text
