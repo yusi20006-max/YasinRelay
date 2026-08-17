@@ -26,6 +26,19 @@ python -m pip install --upgrade pip setuptools wheel
 python -m pip install -e .
 python -m pip install "pytest>=7.4,<10"
 
+# If the canonical Yasin-AI checkout exists beside YasinRelay, install that
+# exact checkout into this environment. Otherwise the declared yasinai>=1.1.4
+# dependency is resolved from the package index.
+if [ -d "../Yasin-AI" ] && [ -f "../Yasin-AI/pyproject.toml" ]; then
+  python -m pip install -e ../Yasin-AI
+fi
+
+# Create an operator-owned environment file on first install. Never overwrite
+# an existing .env and never invent credentials.
+if [ ! -f .env ] && [ -f .env.example ]; then
+  cp .env.example .env
+fi
+
 # Build the Telegram collector using the Termux-native Go toolchain.
 (
   cd fetcher
@@ -42,6 +55,15 @@ import yasinrelay
 print(f"Python: {sys.version}")
 print(f"YasinRelay: {metadata.version('yasin-relay')}")
 print(f"YasinRelay import: OK ({yasinrelay.__file__})")
+
+try:
+    import yasinai
+    from yasinai.contracts import GenerationRequest
+    from yasinai.services import GenerationService
+    print(f"Yasin-AI: {getattr(yasinai, '__version__', metadata.version('yasinai'))}")
+    print("Yasin-AI public contracts: OK")
+except ImportError as exc:
+    raise SystemExit(f"Yasin-AI public contracts unavailable: {exc}")
 PY
 
 python -m pytest -q
@@ -53,7 +75,8 @@ python -m yasinrelay.cli run --channel "@__termux_smoke_test__" --limit 1 || tes
 printf '%s\n' \
   'YasinRelay Termux installation completed successfully.' \
   'Activate: source .venv/bin/activate' \
+  'Config: edit .env before real publishing' \
   'CLI: python -m yasinrelay.cli --help' \
-  'Single run: python -m yasinrelay.cli run' \
+  'Single run: python -m yasinrelay.cli run --channel @channel' \
   'Scheduled: python -m yasinrelay.cli run --schedule' \
   'Continuous: python -m yasinrelay.cli run --loop'
