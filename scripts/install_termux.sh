@@ -10,7 +10,8 @@ fi
 
 pkg update -y
 pkg upgrade -y
-pkg install -y python git clang make pkg-config openssl openssl-tool libffi cmake patchelf go
+# Termux names the Go toolchain package `golang` (not `go`).
+pkg install -y python git clang make pkg-config openssl openssl-tool libffi cmake patchelf golang
 
 PYTHON_BIN="${PREFIX}/bin/python"
 GO_BIN="${PREFIX}/bin/go"
