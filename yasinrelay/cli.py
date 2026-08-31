@@ -71,7 +71,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.command != "run":
         return 1
 
-    if not args.non_interactive:
+    # Normal `run` is interactive. An explicit --channel remains a direct CLI
+    # override, which keeps existing automation/tests usable without prompts.
+    if not args.non_interactive and not args.channels:
         if not sys.stdin.isatty():
             logger.error("اجرای تعاملی به ترمینال نیاز دارد؛ برای سرویس‌ها از --non-interactive استفاده کنید.")
             return 2
