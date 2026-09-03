@@ -103,6 +103,18 @@ def test_factory_yasinai_raises_when_unavailable():
             build_content_processor(ai_provider="yasinai", api_key="")
 
 
+def test_factory_raises_on_unsupported_provider():
+    with pytest.raises(ValueError, match="Unsupported or invalid AI_PROVIDER"):
+        build_content_processor(ai_provider="unsupported_vendor")
+
+
+def test_top_level_yasinai_contract_imports():
+    from yasinai import GenerationRequest, GenerationService
+
+    assert GenerationRequest is not None
+    assert GenerationService is not None
+
+
 def test_no_private_yasinai_imports_in_adapter_source():
     """Static guard: adapter module must not import private packages."""
     import pathlib
