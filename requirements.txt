@@ -3,4 +3,4 @@ python-dotenv>=1.0
 # Optional canonical AI platform (public contracts only):
 #   pip install "yasinai @ git+https://github.com/yusi20006-max/Yasin-AI.git@v1.1.4"
 # or: pip install -e ../Yasin-AI
-# Without yasinai, AI_PROVIDER=yasinai falls back to legacy PassthroughProcessor.
+# Without yasinai, AI_PROVIDER=yasinai raises RuntimeError (no silent fallback).

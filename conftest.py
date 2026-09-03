@@ -99,8 +99,11 @@ except ImportError:
 # Create mock yasinai package with canonical public contract if missing
 try:
     import yasinai
-    from yasinai.contracts import GenerationRequest
-    from yasinai.services import GenerationService
+    try:
+        from yasinai import GenerationRequest, GenerationService
+    except ImportError:
+        from yasinai.contracts import GenerationRequest
+        from yasinai.services import GenerationService
 except ImportError:
     yasinai_mock = ModuleType("yasinai")
     yasinai_mock.__version__ = "1.1.4"
@@ -132,3 +135,6 @@ except ImportError:
             )
     yasinai_services_mock.GenerationService = GenerationService
     sys.modules["yasinai.services"] = yasinai_services_mock
+
+    yasinai_mock.GenerationRequest = GenerationRequest
+    yasinai_mock.GenerationService = GenerationService

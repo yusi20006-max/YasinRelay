@@ -34,3 +34,60 @@ def test_termux_bootstrap_is_termux_only() -> None:
 def test_yasin_ai_is_not_a_pypi_dependency() -> None:
     text = PYPROJECT.read_text(encoding="utf-8")
     assert '"yasinai>=1.1.4"' not in text
+
+
+def test_noninteractive_cli_fails_without_tty_when_interactive_requested(monkeypatch) -> None:
+    from yasinrelay.cli import main
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    # Interactive run (without --non-interactive and without --channel) without TTY should fail cleanly with code 2
+    code = main(["run"])
+    assert code == 2
+
+
+def test_process_lifecycle_and_noninteractive_execution(tmp_path, monkeypatch) -> None:
+    import os
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    env = os.environ.copy()
+    env["EITAA_TOKEN"] = "fake_token"
+    env["EITAA_CHANNEL"] = "@dest_channel"
+    env["SOURCE_CHANNELS"] = "@source_channel"
+    env["AI_PROVIDER"] = "passthrough"
+    env["SCHEDULE_INTERVAL"] = "1"
+    env["DATABASE_PATH"] = str(tmp_path / "test_lifecycle.db")
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "yasinrelay.cli",
+        "run",
+        "--schedule",
+        "--non-interactive",
+    ]
+
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(ROOT),
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    try:
+        assert proc.pid > 0, "Service process should start and have a valid PID"
+        time.sleep(0.5)
+        assert proc.poll() is None, "Service process should remain running in scheduled mode"
+
+        # Terminate cleanly with SIGINT
+        proc.send_signal(signal.SIGINT)
+        out, err = proc.communicate(timeout=5)
+        assert proc.returncode in (0, 130, -signal.SIGINT), f"Process exited with {proc.returncode}"
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()

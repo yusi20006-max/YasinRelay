@@ -37,8 +37,11 @@ def is_yasinai_available() -> bool:
     """Return True if public Yasin-AI packages can be imported."""
     try:
         import yasinai  # noqa: F401
-        from yasinai.contracts import GenerationRequest  # noqa: F401
-        from yasinai.services import GenerationService  # noqa: F401
+        try:
+            from yasinai import GenerationRequest, GenerationService  # noqa: F401
+        except ImportError:
+            from yasinai.contracts import GenerationRequest  # noqa: F401
+            from yasinai.services import GenerationService  # noqa: F401
 
         return True
     except ImportError:
@@ -68,7 +71,10 @@ def _build_generation_request(
 ) -> Any:
     """Build a GenerationRequest when yasinai is installed; else a duck-typed stand-in for tests."""
     try:
-        from yasinai.contracts import GenerationRequest
+        try:
+            from yasinai import GenerationRequest
+        except ImportError:
+            from yasinai.contracts import GenerationRequest
 
         return GenerationRequest(
             prompt=prompt,
@@ -120,7 +126,10 @@ class YasinAIContentProcessor(AIProcessor):
         if generation_service is not None:
             self._service = generation_service
         else:
-            from yasinai.services import GenerationService
+            try:
+                from yasinai import GenerationService
+            except ImportError:
+                from yasinai.services import GenerationService
 
             self._service = GenerationService()
 
@@ -254,4 +263,4 @@ def build_content_processor(
             "(GenerationRequest, GenerationService) are not available."
         )
 
-    return PassthroughProcessor(api_key=api_key, base_url=base_url, model=model)
+    raise ValueError(f"Unsupported or invalid AI_PROVIDER configured: '{ai_provider}'")
