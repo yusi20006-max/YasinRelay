@@ -97,10 +97,10 @@ def test_factory_yasinai_with_injected_service():
     assert proc.process(post).text == "ok"
 
 
-def test_factory_yasinai_falls_back_when_unavailable():
+def test_factory_yasinai_raises_when_unavailable():
     with patch("yasinrelay.yasinai_adapter.is_yasinai_available", return_value=False):
-        proc = build_content_processor(ai_provider="yasinai", api_key="")
-    assert isinstance(proc, PassthroughProcessor)
+        with pytest.raises(RuntimeError, match="Canonical Yasin-AI requested"):
+            build_content_processor(ai_provider="yasinai", api_key="")
 
 
 def test_no_private_yasinai_imports_in_adapter_source():
@@ -139,3 +139,16 @@ def test_pipeline_stage_with_adapter():
 
     assert result.processed_text == "rewritten"
     assert result.is_valid is True
+
+
+def test_canonical_yasinai_public_imports_and_processor_type():
+    """Verify canonical public contracts and that factory produces YasinAIContentProcessor."""
+    from yasinai.contracts import GenerationRequest
+    from yasinai.services import GenerationService
+
+    assert GenerationRequest is not None
+    assert GenerationService is not None
+
+    proc = build_content_processor(ai_provider="yasinai")
+    assert isinstance(proc, YasinAIContentProcessor)
+    assert not isinstance(proc, PassthroughProcessor)

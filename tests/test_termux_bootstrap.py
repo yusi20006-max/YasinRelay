@@ -9,6 +9,7 @@ def test_termux_bootstrap_contract() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     assert "set -euo pipefail" in text
     assert "pkg install -y python git clang make pkg-config openssl openssl-tool libffi cmake patchelf golang" in text
+    assert "ANDROID_API_LEVEL" in text
     assert 'PYTHON_BIN="${PREFIX}/bin/python"' in text
     assert 'GO_BIN="${PREFIX}/bin/go"' in text
     assert '"${PYTHON_BIN}" -m venv .venv' in text
@@ -21,6 +22,8 @@ def test_termux_bootstrap_contract() -> None:
     assert "python -m pytest -q" in text
     assert "python -m yasinrelay.cli --help" in text
     assert "Yasin-AI public contracts: OK" in text
+    assert "YasinAIContentProcessor" in text
+    assert "PassthroughProcessor" in text
 
 
 def test_termux_bootstrap_is_termux_only() -> None:

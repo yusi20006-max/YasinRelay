@@ -13,6 +13,17 @@ pkg upgrade -y
 # Termux names the Go toolchain package `golang` (not `go`).
 pkg install -y python git clang make pkg-config openssl openssl-tool libffi cmake patchelf golang
 
+# Ensure Android API Level is available for native dependency builds (Clang / CGo).
+if [ -z "${ANDROID_API_LEVEL:-}" ]; then
+  if command -v getprop >/dev/null 2>&1; then
+    ANDROID_API_LEVEL="$(getprop ro.build.version.sdk || echo 24)"
+  else
+    ANDROID_API_LEVEL=24
+  fi
+  export ANDROID_API_LEVEL
+fi
+echo "Android API level: ${ANDROID_API_LEVEL}"
+
 PYTHON_BIN="${PREFIX}/bin/python"
 GO_BIN="${PREFIX}/bin/go"
 "${PYTHON_BIN}" --version
@@ -74,8 +85,30 @@ PY
 python -m pytest -q
 python -m yasinrelay.cli --help
 
-# No network credentials are required for the smoke test.
-python -m yasinrelay.cli run --channel "@__termux_smoke_test__" --limit 1 || test $? -eq 1
+# Run deterministic smoke test for canonical Yasin-AI pipeline.
+python - <<'SMOKE'
+import sys
+import yasinrelay
+import yasinrelay.yasinai_adapter as adapter
+from yasinrelay.ai_processor import PassthroughProcessor
+from yasinrelay.fetch_engine import Post
+
+print(f"Executing Termux smoke test on Python {sys.version.split()[0]}...")
+assert adapter.is_yasinai_available(), "Canonical Yasin-AI contracts must be importable"
+
+processor = adapter.build_content_processor(ai_provider="yasinai")
+assert isinstance(processor, adapter.YasinAIContentProcessor), (
+    f"Expected YasinAIContentProcessor, got {type(processor)}"
+)
+assert not isinstance(processor, PassthroughProcessor), "Silent fallback to PassthroughProcessor detected!"
+
+item = Post(channel="@__termux_smoke_test__", message_id="1", text="Termux smoke test post content")
+res = processor.process(item)
+assert res is not None and res.text, "Smoke test processing returned empty content"
+print(f"Smoke test item processed successfully: '{res.text[:40]}...' using {type(processor).__name__}")
+SMOKE
+
+python -m yasinrelay.cli run --channel "@__termux_smoke_test__" --limit 1 --non-interactive || test $? -eq 1
 
 printf '%s\n' \
   'YasinRelay Termux installation completed successfully.' \
