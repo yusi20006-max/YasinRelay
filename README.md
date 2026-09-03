@@ -89,7 +89,7 @@ cp .env.example .env
 | `LOG_LEVEL` | `INFO` | سطح لاگینگ سیستم (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `FETCH_INTERVAL_SECONDS` | `3600` | بازه زمان‌بندی قدیمی در حالت `--loop` |
 | `SCHEDULE_INTERVAL` | `1800` | بازه زمان‌بندی جدید در حالت `--schedule` (ثانیه) |
-| `AI_PROVIDER` | `passthrough` | ارائه‌دهنده سرویس هوش مصنوعی |
+| `AI_PROVIDER` | `yasinai` | ارائه‌دهنده سرویس هوش مصنوعی (`yasinai` canonical / `passthrough` legacy) |
 | `AI_API_KEY` | - | کلید دسترسی API برای هوش مصنوعی |
 | `AI_BASE_URL` | `https://api.openai.com/v1` | آدرس پایه API هوش مصنوعی |
 | `AI_MODEL` | `gpt-4o-mini` | مدل زبان مورد استفاده |
@@ -116,10 +116,20 @@ python3 -m yasinrelay.cli run --limit 5
 python3 -m yasinrelay.cli run --channel @some_channel
 ```
 
-### ۲. اجرای زمان‌بندی شده جدید (Recommended - Scheduled Run)
-اجرا با استفاده از سیستم زمان‌بند بومی و سبک نسخه ۲ (استفاده از بازه `SCHEDULE_INTERVAL`):
+### ۲. اجرای زمان‌بندی شده جدید و غیرتعاملی سرویس (Recommended - Scheduled Run / YasinHub Service)
+اجرا با استفاده از سیستم زمان‌بند بومی و سبک نسخه ۲ (استفاده از بازه `SCHEDULE_INTERVAL`). دستور کانونی زیر بدون نیاز به TTY/ترمینال تعاملی اجرا می‌شود:
 ```bash
-python3 -m yasinrelay.cli run --schedule
+python3 -m yasinrelay.cli run --schedule --non-interactive
+```
+
+---
+
+## راه اندازی در ترموکس (Termux / Android First-Class Support)
+
+برای راه‌اندازی در ترموکس (Termux روی اندروید ARM64)، اسکریپت نصب بومی ارائه شده است که سطح API اندروید (`ANDROID_API_LEVEL`) و وابستگی‌های کانونی `Yasin-AI` را به‌طور کامل پیکربندی و تست می‌کند:
+
+```bash
+bash scripts/install_termux.sh
 ```
 
 ### ۳. اجرای دوره‌ای قدیمی (Legacy Loop Run)

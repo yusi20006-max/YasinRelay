@@ -244,20 +244,14 @@ def build_content_processor(
 
     if provider in ("yasinai", "yasin-ai", "canonical", ""):
         if generation_service is not None or is_yasinai_available():
-            try:
-                return YasinAIContentProcessor(
-                    generation_service=generation_service,
-                    model=model or None,
-                    api_key=api_key,
-                )
-            except ImportError:
-                logger.warning(
-                    "Yasin-AI requested but not importable; falling back to legacy PassthroughProcessor"
-                )
-        else:
-            logger.warning(
-                "Yasin-AI package not installed; falling back to legacy PassthroughProcessor. "
-                "Install Yasin-AI v1.1.4+ for canonical contracts."
+            return YasinAIContentProcessor(
+                generation_service=generation_service,
+                model=model or None,
+                api_key=api_key,
             )
+        raise RuntimeError(
+            "Canonical Yasin-AI requested but yasinai package or contracts "
+            "(GenerationRequest, GenerationService) are not available."
+        )
 
     return PassthroughProcessor(api_key=api_key, base_url=base_url, model=model)

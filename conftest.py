@@ -95,3 +95,40 @@ except ImportError:
     yasin_core_sdk_mock.active_context = active_context
     yasin_core_sdk_mock.get_current_context = get_current_context
     yasin_core_sdk_mock.tool = tool
+
+# Create mock yasinai package with canonical public contract if missing
+try:
+    import yasinai
+    from yasinai.contracts import GenerationRequest
+    from yasinai.services import GenerationService
+except ImportError:
+    yasinai_mock = ModuleType("yasinai")
+    yasinai_mock.__version__ = "1.1.4"
+    sys.modules["yasinai"] = yasinai_mock
+
+    yasinai_contracts_mock = ModuleType("yasinai.contracts")
+    class GenerationRequest:
+        def __init__(self, prompt, model=None, max_tokens=2048, temperature=0.7, system_prompt=None, provider=None, metadata=None):
+            self.prompt = prompt
+            self.model = model
+            self.max_tokens = max_tokens
+            self.temperature = temperature
+            self.system_prompt = system_prompt
+            self.provider = provider
+            self.metadata = metadata or {}
+    yasinai_contracts_mock.GenerationRequest = GenerationRequest
+    sys.modules["yasinai.contracts"] = yasinai_contracts_mock
+
+    yasinai_services_mock = ModuleType("yasinai.services")
+    class GenerationService:
+        def generate(self, request):
+            from types import SimpleNamespace
+            return SimpleNamespace(
+                success=True,
+                text=f"[Yasin-AI processed] {request.prompt}",
+                error=None,
+                model=request.model or "gpt-4o-mini",
+                provider=request.provider or "openai",
+            )
+    yasinai_services_mock.GenerationService = GenerationService
+    sys.modules["yasinai.services"] = yasinai_services_mock
