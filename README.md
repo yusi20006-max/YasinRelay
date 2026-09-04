@@ -128,6 +128,25 @@ python3 -m yasinrelay.cli run --schedule
 python3 -m yasinrelay.cli run --loop
 ```
 
+### ۴. اجرای کانونیکال Termux (غیرتعاملی — برای YasinHub)
+فرمان کانونیکال برای سرویس Termux/Android ARM64 که YasinHub آن را supervise می‌کند:
+```bash
+.venv/bin/yasinrelay-termux run --schedule --non-interactive
+```
+ویژگی‌ها:
+- غیرتعاملی (`--non-interactive`): هرگز وارد prompt تعاملی نمی‌شود؛ بدون `SOURCE_CHANNELS` با خطای صادقانه `exit 1` خارج می‌شود.
+- بدون وابستگی به `cwd` یا `activate` دستی؛ ریشه پروژه را از مسیر اسکریپت تشخیص می‌دهد.
+- `LD_PRELOAD` را برای Yasin-AI/cryptography در Termux به صورت قطعی می‌سازد: `libpythonX.Y.so` را از نسخه `.venv` استخراج کرده و مقدار قبلی `LD_PRELOAD` را حفظ می‌کند (بدون تکثیر).
+- با `exec` اجرا می‌شود تا مالکیت PID برای YasinHub شفاف باشد.
+- پیش‌نیاز: Termux با `PREFIX=/data/data/com.termux/files/usr`، پایتون `3.14.x`، و `.venv` ساخته‌شده توسط `scripts/install_termux.sh`.
+
+نمونه راستی‌آزمایی:
+```bash
+.venv/bin/yasinrelay-termux --help
+.venv/bin/yasinrelay-termux run --help
+SOURCE_CHANNELS="" .venv/bin/yasinrelay-termux run --non-interactive  # -> exit 1 صادقانه
+```
+
 ---
 
 ## مستندات توسعه و تست‌ها

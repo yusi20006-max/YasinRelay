@@ -71,17 +71,26 @@ except ImportError as exc:
     raise SystemExit(f"Yasin-AI public contracts unavailable: {exc}")
 PY
 
+# Install canonical Termux launcher
+if [ -f scripts/yasinrelay-termux ]; then
+  install -m 755 scripts/yasinrelay-termux .venv/bin/yasinrelay-termux
+  echo "Installed canonical launcher: .venv/bin/yasinrelay-termux"
+fi
+
 python -m pytest -q
 python -m yasinrelay.cli --help
+.venv/bin/yasinrelay-termux --help
 
 # No network credentials are required for the smoke test.
 python -m yasinrelay.cli run --channel "@__termux_smoke_test__" --limit 1 || test $? -eq 1
+.venv/bin/yasinrelay-termux run --channel "@__termux_smoke_test__" --limit 1 || test $? -eq 1
 
 printf '%s\n' \
   'YasinRelay Termux installation completed successfully.' \
   'Activate: source .venv/bin/activate' \
   'Config: edit .env before real publishing' \
   'CLI: python -m yasinrelay.cli --help' \
+  'Canonical: .venv/bin/yasinrelay-termux run --schedule --non-interactive' \
   'Single run: python -m yasinrelay.cli run --channel @channel' \
   'Scheduled: python -m yasinrelay.cli run --schedule' \
   'Continuous: python -m yasinrelay.cli run --loop'
