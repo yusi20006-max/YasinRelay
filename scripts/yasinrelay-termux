@@ -1,0 +1,106 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# YasinRelay canonical Termux launcher — deterministic non-interactive runtime.
+# Contract: .venv/bin/yasinrelay-termux run --schedule --non-interactive
+# Must: identify root, .venv python, PREFIX, libpython, preserve LD_PRELOAD, exec python -m yasinrelay.cli
+set -euo pipefail
+
+# Resolve script path (handle symlink from .venv/bin)
+SCRIPT_PATH="$0"
+if [ -L "$SCRIPT_PATH" ]; then
+  _resolved="$(readlink -f "$SCRIPT_PATH" 2>/dev/null || realpath "$SCRIPT_PATH" 2>/dev/null || echo "$SCRIPT_PATH")"
+  SCRIPT_PATH="$_resolved"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+# Discover YasinRelay root deterministically (no CWD dependence)
+RELAY_ROOT=""
+# candidate 1: script is .venv/bin/yasinrelay-termux -> root is ../..
+if [ -f "$SCRIPT_DIR/../../pyproject.toml" ] && [ -d "$SCRIPT_DIR/../../yasinrelay" ]; then
+  RELAY_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# candidate 2: script is scripts/yasinrelay-termux -> root is ..
+elif [ -f "$SCRIPT_DIR/../pyproject.toml" ] && [ -d "$SCRIPT_DIR/../yasinrelay" ]; then
+  RELAY_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# candidate 3: walk up from SCRIPT_DIR
+else
+  _dir="$SCRIPT_DIR"
+  for _i in 1 2 3 4 5; do
+    if [ -f "$_dir/pyproject.toml" ] && [ -d "$_dir/yasinrelay" ]; then
+      RELAY_ROOT="$_dir"
+      break
+    fi
+    _dir="$(cd "$_dir/.." 2>/dev/null && pwd || echo "")"
+    [ -z "$_dir" ] || [ "$_dir" = "/" ] && break
+  done
+fi
+
+if [ -z "$RELAY_ROOT" ]; then
+  echo "ERROR: cannot locate YasinRelay root (pyproject.toml + yasinrelay/) from $SCRIPT_DIR" >&2
+  exit 1
+fi
+
+PYTHON_BIN="$RELAY_ROOT/.venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+  if [ -x "$RELAY_ROOT/.venv/bin/python3" ]; then
+    PYTHON_BIN="$RELAY_ROOT/.venv/bin/python3"
+  elif [ -n "${PREFIX:-}" ] && [ -x "$PREFIX/bin/python" ]; then
+    PYTHON_BIN="$PREFIX/bin/python"
+  elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python3)"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="$(command -v python)"
+  else
+    echo "ERROR: missing Python interpreter at $RELAY_ROOT/.venv/bin/python" >&2
+    exit 1
+  fi
+fi
+
+# Termux PREFIX — Termux on Android requires libpython preload where applicable.
+# On non-Termux (CI/ubuntu), skip preload enforcement gracefully.
+PREFIX_VAL="${PREFIX:-/data/data/com.termux/files/usr}"
+IS_TERMUX=0
+if [ "$PREFIX_VAL" = "/data/data/com.termux/files/usr" ] && [ -d "$PREFIX_VAL" ]; then
+  IS_TERMUX=1
+fi
+
+LIBPYTHON=""
+if [ "$IS_TERMUX" = "1" ]; then
+  # Derive Python major.minor from the selected .venv interpreter (no hard-code)
+  PY_VER=""
+  if ! PY_VER="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>&1)"; then
+    echo "ERROR: failed to derive Python version from $PYTHON_BIN: $PY_VER" >&2
+    exit 1
+  fi
+  # Validate format X.Y
+  if ! echo "$PY_VER" | grep -Eq '^[0-9]+\.[0-9]+$'; then
+    echo "ERROR: invalid Python version derived: $PY_VER" >&2
+    exit 1
+  fi
+
+  LIBPYTHON="$PREFIX_VAL/lib/libpython${PY_VER}.so"
+  if [ ! -f "$LIBPYTHON" ]; then
+    echo "ERROR: required libpython not found: $LIBPYTHON (derived from $PYTHON_BIN -> $PY_VER)" >&2
+    exit 1
+  fi
+
+  # Preserve/compose LD_PRELOAD deterministically (avoid duplicate, keep existing)
+  if [ -n "${LD_PRELOAD:-}" ]; then
+    case ":${LD_PRELOAD}:" in
+      *":${LIBPYTHON}:"*)
+        export LD_PRELOAD
+        ;;
+      *)
+        export LD_PRELOAD="${LIBPYTHON}:${LD_PRELOAD}"
+        ;;
+    esac
+  else
+    export LD_PRELOAD="$LIBPYTHON"
+  fi
+else
+  # Non-Termux: preserve LD_PRELOAD if present, but do not require libpython
+  if [ -n "${LD_PRELOAD:-}" ]; then
+    export LD_PRELOAD
+  fi
+fi
+
+# Exec replaces this shell — clear PID ownership for Hub supervision
+exec "$PYTHON_BIN" -m yasinrelay.cli "$@"

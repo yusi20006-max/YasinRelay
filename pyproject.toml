@@ -5,12 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yasin-relay"
 dynamic = ["version"]
-description = "YasinRelay: feed ingestion, AI rewriting, and channel-publishing pipeline for the Yasin AI Ecosystem"
+description = "YasinRelay: Telegram channel relay with AI processing for the Yasin ecosystem"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "requests>=2.31",
+    "pyyaml>=6.0",
     "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
 ]
 
 [tool.setuptools.dynamic]
@@ -18,3 +23,6 @@ version = {attr = "yasinrelay.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["yasinrelay*", "yasin_relay*"]
+
+[tool.setuptools]
+script-files = ["scripts/yasinrelay-termux"]
