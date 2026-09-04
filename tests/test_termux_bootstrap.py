@@ -10,9 +10,14 @@ def test_termux_bootstrap_contract() -> None:
     assert "set -euo pipefail" in text
     assert "pkg install -y python git clang make pkg-config openssl openssl-tool libffi cmake patchelf golang" in text
     assert "ANDROID_API_LEVEL" in text
+    assert '"${ANDROID_API_LEVEL}" -lt 30' in text
     assert 'PYTHON_BIN="${PREFIX}/bin/python"' in text
     assert 'GO_BIN="${PREFIX}/bin/go"' in text
     assert '"${PYTHON_BIN}" -m venv .venv' in text
+    assert "LD_PRELOAD" in text
+    assert "libpython" in text
+    assert "yasinrelay-termux" in text
+    assert "exec \"${PYTHON_BIN}\" -m yasinrelay.cli \"$@\"" in text
     assert "python -m pip install -e ." in text
     assert 'git clone --depth 1 https://github.com/yusi20006-max/Yasin-AI.git "${YASIN_AI_DIR}"' in text
     assert 'python -m pip install -e "${YASIN_AI_DIR}"' in text
