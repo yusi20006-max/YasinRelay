@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 logs/
 *.db
+*.egg-info/
 fetcher/openfeed-fetch
 .env
 .env.*
