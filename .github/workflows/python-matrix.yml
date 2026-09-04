@@ -26,4 +26,5 @@ jobs:
         run: pip install -e ./Yasin-AI
       - run: pip install -e .
       - run: pip install pytest
-      - run: pytest -q
+      # Avoid basename collision with Yasin-AI/tests/test_termux_bootstrap.py
+      - run: pytest -q --ignore=Yasin-AI
