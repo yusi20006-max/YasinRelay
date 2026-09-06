@@ -7,7 +7,6 @@ import (
 	mrand "math/rand/v2"
 	"net"
 	"net/http"
-	neturl "net/url"
 	"sync"
 	"time"
 
@@ -16,8 +15,8 @@ import (
 
 const (
 	minRequestInterval = 1500 * time.Millisecond
-	maxBodySize        = 5 << 20 // 5MB — plenty for channel HTML + thumbnail images
-	maxDownloadSize     = 200 << 20 // 200MB — video/document downloads
+	maxBodySize        = 5 << 20   // 5MB — plenty for channel HTML + thumbnail images
+	maxDownloadSize    = 200 << 20 // 200MB — video/document downloads
 	dialTimeout        = 8 * time.Second
 	tlsTimeout         = 8 * time.Second
 	requestTimeout     = 20 * time.Second
@@ -381,48 +380,87 @@ func (c *Client) waitForRate(ctx context.Context) error {
 // dialTLSFor returns a DialTLSContext closure preconfigured for the given
 // proxy attempt. Connect → uTLS handshake with the chosen fingerprint and
 // SNI (which may differ from the request Host for domain fronting).
+//
+// Security (P1 DNS-rebinding TOCTOU): when ap.ip == "" (direct dial) the
+// hostname is resolved and validated INSIDE this dial closure via
+// resolveValidatedIPs, and only the validated IP literals are dialed —
+// the hostname is never passed to net.Dialer. Check-time validation in
+// validateSafeURL alone is not sufficient because DNS may change between
+// check and use; pinning at use time closes that window (fail closed).
+// Fixed-IP fronted attempts (ap.ip != "") are preserved unchanged: they
+// keep dialing the pinned front IP.
+//
+// Synchronized with Openfeed internal/telemirror/client.go; keep both
+// implementations behaviorally equivalent.
 func dialTLSFor(ap proxyAttempt, host string) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		d := &net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}
-		target := addr
-		if ap.ip != "" {
-			target = net.JoinHostPort(ap.ip, "443")
-		}
-		rawConn, err := d.DialContext(ctx, network, target)
-		if err != nil {
-			return nil, err
-		}
 		sni := ap.sni
 		if sni == sniUseHost {
 			sni = host
 		}
-		cfg := &utls.Config{
-			ServerName:         sni,
-			InsecureSkipVerify: true,
-			NextProtos:         []string{"http/1.1"},
-		}
-		var spec *utls.ClientHelloSpec
-		if ap.fp.nodeTLS12 {
-			spec = nodeTLS12Spec()
-		} else {
-			spec, err = presetSpec(ap.fp.id)
+		dialAndHandshake := func(ctx context.Context, target string) (net.Conn, error) {
+			rawConn, err := d.DialContext(ctx, network, target)
 			if err != nil {
-				_ = rawConn.Close()
-				return nil, fmt.Errorf("load spec %s: %w", ap.fp.name, err)
+				return nil, err
 			}
+			cfg := &utls.Config{
+				ServerName:         sni,
+				InsecureSkipVerify: true,
+				NextProtos:         []string{"http/1.1"},
+			}
+			var spec *utls.ClientHelloSpec
+			if ap.fp.nodeTLS12 {
+				spec = nodeTLS12Spec()
+			} else {
+				var specErr error
+				spec, specErr = presetSpec(ap.fp.id)
+				if specErr != nil {
+					_ = rawConn.Close()
+					return nil, fmt.Errorf("load spec %s: %w", ap.fp.name, specErr)
+				}
+			}
+			tlsConn := utls.UClient(rawConn, cfg, utls.HelloCustom)
+			if err := tlsConn.ApplyPreset(spec); err != nil {
+				_ = rawConn.Close()
+				return nil, fmt.Errorf("apply spec %s: %w", ap.fp.name, err)
+			}
+			hsCtx, cancel := context.WithTimeout(ctx, tlsTimeout)
+			defer cancel()
+			if err := tlsConn.HandshakeContext(hsCtx); err != nil {
+				_ = rawConn.Close()
+				return nil, fmt.Errorf("tls handshake: %w", err)
+			}
+			return tlsConn, nil
 		}
-		tlsConn := utls.UClient(rawConn, cfg, utls.HelloCustom)
-		if err := tlsConn.ApplyPreset(spec); err != nil {
-			_ = rawConn.Close()
-			return nil, fmt.Errorf("apply spec %s: %w", ap.fp.name, err)
+		if ap.ip != "" {
+			return dialAndHandshake(ctx, net.JoinHostPort(ap.ip, "443"))
 		}
-		hsCtx, cancel := context.WithTimeout(ctx, tlsTimeout)
-		defer cancel()
-		if err := tlsConn.HandshakeContext(hsCtx); err != nil {
-			_ = rawConn.Close()
-			return nil, fmt.Errorf("tls handshake: %w", err)
+		// Direct path: resolve + validate at use time, dial only
+		// validated IPs, never the hostname itself.
+		dialHost, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("telemirror: bad dial addr %q: %w", addr, err)
 		}
-		return tlsConn, nil
+		if port == "" {
+			port = "443"
+		}
+		ips, err := resolveValidatedIPs(ctx, dialHost)
+		if err != nil {
+			return nil, err
+		}
+		var lastErr error
+		for _, ip := range ips {
+			conn, err := dialAndHandshake(ctx, net.JoinHostPort(ip.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		if lastErr == nil {
+			lastErr = fmt.Errorf("telemirror: no dialable addresses for %q", dialHost)
+		}
+		return nil, lastErr
 	}
 }
 
@@ -469,7 +507,7 @@ func (c *Client) do(ctx context.Context, ap proxyAttempt, host, username, ua str
 
 	transport := transportFor(ap, host)
 	defer transport.CloseIdleConnections()
-	httpClient := &http.Client{Transport: transport, Timeout: requestTimeout}
+	httpClient := &http.Client{Transport: transport, Timeout: requestTimeout, CheckRedirect: safeCheckRedirect}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -509,9 +547,11 @@ func (c *Client) FetchURL(ctx context.Context, rawURL string) ([]byte, string, e
 // the download proxy (videos/documents can be far larger than the 5MB
 // cap that's appropriate for images).
 func (c *Client) FetchURLLimit(ctx context.Context, rawURL string, limit int64) ([]byte, string, error) {
-	u, err := neturl.Parse(rawURL)
-	if err != nil || u.Scheme != "https" || u.Host == "" {
-		return nil, "", fmt.Errorf("telemirror: bad url %q", rawURL)
+	// Check-time gate (fail closed before any TCP contact to the target).
+	// Synchronized with Openfeed internal/telemirror/client.go.
+	u, err := validateSafeURL(ctx, rawURL)
+	if err != nil {
+		return nil, "", err
 	}
 	hostHeader := u.Host
 
@@ -550,7 +590,7 @@ func (c *Client) FetchDownload(ctx context.Context, rawURL string) ([]byte, stri
 func (c *Client) fetchOnce(ctx context.Context, ap proxyAttempt, rawURL, hostHeader string, limit int64) ([]byte, string, int, error) {
 	transport := transportFor(ap, hostHeader)
 	defer transport.CloseIdleConnections()
-	httpClient := &http.Client{Transport: transport, Timeout: downloadTimeout}
+	httpClient := &http.Client{Transport: transport, Timeout: downloadTimeout, CheckRedirect: safeCheckRedirect}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
