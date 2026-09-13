@@ -109,7 +109,20 @@ def test_factory_raises_on_unsupported_provider():
 
 
 def test_top_level_yasinai_contract_imports():
-    from yasinai import GenerationRequest, GenerationService
+    """Canonical public contracts live in yasinai.contracts / yasinai.services.
+
+    Yasin-AI does not re-export GenerationRequest/GenerationService at the
+    package top level; assert the real canonical surfaces and prove we are
+    not running against conftest mocks.
+    """
+    import yasinai
+
+    assert "mock" not in str(getattr(yasinai, "__file__", "")).lower()
+    assert "Yasin-AI" in str(getattr(yasinai, "__file__", "")) or "yasinai" in str(
+        getattr(yasinai, "__file__", "")
+    )
+    from yasinai.contracts import GenerationRequest
+    from yasinai.services import GenerationService
 
     assert GenerationRequest is not None
     assert GenerationService is not None

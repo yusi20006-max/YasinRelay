@@ -2,6 +2,21 @@ import os
 import sys
 from types import ModuleType
 
+# Termux/Android (Issue #51): canonical Yasin-AI -> cryptography Rust
+# extension requires libpython preloaded at exec time. Re-exec pytest with
+# the preload when missing so tests exercise the real canonical package
+# instead of silently falling back to mocks.
+try:
+    from yasinrelay._termux_runtime import ensure_termux_preload as _ensure_preload
+except ImportError:
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from yasinrelay._termux_runtime import ensure_termux_preload as _ensure_preload
+    except ImportError:
+        _ensure_preload = None
+if _ensure_preload is not None:
+    _ensure_preload()
+
 # Insert repository root to sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -96,15 +111,18 @@ except ImportError:
     yasin_core_sdk_mock.get_current_context = get_current_context
     yasin_core_sdk_mock.tool = tool
 
-# Create mock yasinai package with canonical public contract if missing
+# Create mock yasinai package with canonical public contract ONLY when the
+# real package is genuinely not installed. A failed inner import (e.g.
+# linker error inside canonical Yasin-AI) must fail loudly, never silently
+# fall back to mocks (Issue #51 false-green guard).
 try:
-    import yasinai
-    try:
-        from yasinai import GenerationRequest, GenerationService
-    except ImportError:
-        from yasinai.contracts import GenerationRequest
-        from yasinai.services import GenerationService
-except ImportError:
+    import yasinai  # noqa: F401
+    _yasinai_missing = False
+except ImportError as _exc:
+    _yasinai_missing = _exc.name == "yasinai" or "No module named 'yasinai'" in str(_exc)
+    if not _yasinai_missing:
+        raise
+if _yasinai_missing:
     yasinai_mock = ModuleType("yasinai")
     yasinai_mock.__version__ = "1.1.4"
     sys.modules["yasinai"] = yasinai_mock
