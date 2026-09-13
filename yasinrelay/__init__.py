@@ -7,6 +7,10 @@ AI پردازش می‌کند، و در ایتا منتشر می‌کند.
 AI processing prefers Yasin-AI public contracts (see yasinai_adapter).
 """
 
+from ._termux_runtime import ensure_termux_preload as _ensure_termux_preload
+
+_ensure_termux_preload()
+
 from .ai_processor import CallableProcessor, ContentProcessor, PassthroughProcessor, ProcessedContent
 from .config import EitaaConfig, RelayConfig, load_config
 from .eitaa_publisher import EitaaPublisher, PublishError, PublishResult

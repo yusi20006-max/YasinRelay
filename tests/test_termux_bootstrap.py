@@ -96,3 +96,54 @@ def test_process_lifecycle_and_noninteractive_execution(tmp_path, monkeypatch) -
         if proc.poll() is None:
             proc.kill()
             proc.wait()
+
+
+def test_canonical_imports_without_manual_preload() -> None:
+    """Issue #51: direct venv python must self-heal the Termux preload.
+
+    The child strips libpython from LD_PRELOAD; yasinrelay's runtime
+    self-heal must re-exec with the preload so canonical
+    contracts/services import without manual launcher setup.
+    """
+    import os
+    import subprocess
+    import sys
+
+    env = os.environ.copy()
+    parts = [p for p in env.get("LD_PRELOAD", "").split(":") if p and "libpython" not in p]
+    if parts:
+        env["LD_PRELOAD"] = ":".join(parts)
+    else:
+        env.pop("LD_PRELOAD", None)
+    env.pop("_YASINRELAY_PRELOAD_FIXED", None)
+
+    code = (
+        "import yasinrelay;"
+        "from yasinai.contracts import GenerationRequest;"
+        "from yasinai.services import GenerationService;"
+        "print('CANONICAL_OK')"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, f"{proc.stderr[-2000:]}"
+    assert "CANONICAL_OK" in proc.stdout
+
+
+def test_conftest_uses_real_canonical_package() -> None:
+    """Guard against silent mock fallback masking linker failures."""
+    import yasinai
+
+    path = str(getattr(yasinai, "__file__", ""))
+    assert "Yasin-AI" in path or "site-packages" in path, f"unexpected yasinai: {path}"
+    assert "mock" not in path.lower()
+    from yasinai.contracts import GenerationRequest
+    from yasinai.services import GenerationService
+
+    assert GenerationRequest is not None
+    assert GenerationService is not None
